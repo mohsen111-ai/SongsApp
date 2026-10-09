@@ -39,7 +39,7 @@ const FEATS = /*FEATS*/[];
 const EXTRAS = /*EXTRAS*/{};   // real edited eyes-closed / mouth-open pictures + masks, by pose index
 
 const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl', { antialias:true, premultipliedAlpha:false });
+const gl = canvas.getContext('webgl', { antialias:false, premultipliedAlpha:false, powerPreference:'high-performance' });
 
 const VS = `attribute vec2 p; varying vec2 v; uniform vec2 uvS, uvO;
 void main(){ vec2 q = p*0.5+0.5; v = vec2(q.x*uvS.x + uvO.x, (1.0-q.y)*uvS.y + uvO.y); gl_Position = vec4(p,0,1); }`;
@@ -59,10 +59,6 @@ vec3 hsv(vec3 c){
   float d = q.x - min(q.w,q.y);
   return vec3(abs(q.z + (q.w-q.y)/(6.*d+1e-10)), d/(q.x+1e-10), q.x);
 }
-float hairness(vec3 c){
-  vec3 h = hsv(c);
-  return smoothstep(.50,.62,h.y) * smoothstep(.40,.55,h.z) * step(.02,h.x) * step(h.x,.12);
-}
 vec3 eyeLid(vec3 col, vec2 p, vec4 e, vec4 s, float b){
   if (e.z <= 0. || b < .01) return col;
   vec2 d = p - e.xy; float ca = cos(s.x), sa = sin(s.x);
@@ -81,17 +77,13 @@ vec3 eyeLid(vec3 col, vec2 p, vec4 e, vec4 s, float b){
 vec4 live(sampler2D T, vec2 p, vec4 e0, vec4 s0, vec4 e1, vec4 s1, vec4 mg, vec4 ms, float real){
   // breathing about the bottom centre
   float br = sin(t*1.5)*.5+.5;
-  p = (p - vec2(.5,1.)) / (1. + .010*br + .006*talk*sin(t*9.)) + vec2(.5,1.);
+  p = (p - vec2(.5,1.)) / (1. + .010*br) + vec2(.5,1.);
   // head turn / tilt: the top moves more than the bottom
   float up = 1. - p.y;
-  p.x += tx * .035 * up*up + talk*.0*up;
-  p.y += ty * .02 * up*up + talk*.004*sin(t*7.)*up;
+  p.x += tx * .035 * up*up;
+  p.y += ty * .02 * up*up;
   // hair sway: soft mask, more movement toward the ends
-  float e = .005;
-  float m = hairness(texture2D(T,p).rgb)
-          + hairness(texture2D(T,p+vec2(e,0)).rgb) + hairness(texture2D(T,p-vec2(e,0)).rgb)
-          + hairness(texture2D(T,p+vec2(0,e)).rgb) + hairness(texture2D(T,p-vec2(0,e)).rgb);
-  m /= 5.;
+  float m = texture2D(T,p).a;   // hair mask, computed once when the picture loads
   float w = m * (.25 + .75*smoothstep(.08,.85,p.y));
   vec2 d = vec2(sin(t*1.3 + p.y*7. + p.x*2.) + .5*sin(t*2.3 + p.y*13.),
                 .45*sin(t*1.1 + p.x*6.)) * .0048 * w;
@@ -113,8 +105,9 @@ vec4 live(sampler2D T, vec2 p, vec4 e0, vec4 s0, vec4 e1, vec4 s1, vec4 mg, vec4
   col.rgb = mix(col.rgb, mix(vec3(.08,.025,.04), vec3(.36,.10,.15), smoothstep(.35,1.,opened)*.7*mouth), gapM);
   if (real > .5) {
     vec2 mk = texture2D(Z,p).rg;
-    col.rgb = mix(col.rgb, texture2D(X,p).rgb, mk.r * blink);
-    col.rgb = mix(col.rgb, texture2D(Y,p).rgb, mk.g * smoothstep(.08,.85,mouth));
+    if (mk.r * blink > .002) col.rgb = mix(col.rgb, texture2D(X,p).rgb, mk.r * blink);
+    float mo = smoothstep(.08,.85,mouth);
+    if (mk.g * mo > .002) col.rgb = mix(col.rgb, texture2D(Y,p).rgb, mk.g * mo);
   } else {
     col.rgb = eyeLid(col.rgb, p, e0, s0, blink);
     col.rgb = eyeLid(col.rgb, p, e1, s1, blink);
@@ -122,7 +115,10 @@ vec4 live(sampler2D T, vec2 p, vec4 e0, vec4 s0, vec4 e1, vec4 s1, vec4 mg, vec4
   return col;
 }
 void main(){
-  vec4 c = mix(live(A,v,EA0,SA0,EA1,SA1,MA,NA,hx), live(B,v,EB0,SB0,EB1,SB1,MB,NB,0.), mixv);
+  vec4 c;
+  if (mixv < .002) c = live(A,v,EA0,SA0,EA1,SA1,MA,NA,hx);
+  else if (mixv > .998) c = live(B,v,EB0,SB0,EB1,SB1,MB,NB,0.);
+  else c = mix(live(A,v,EA0,SA0,EA1,SA1,MA,NA,hx), live(B,v,EB0,SB0,EB1,SB1,MB,NB,0.), mixv);
   float edge = smoothstep(1.0, 0.88, v.y) * smoothstep(0.0, 0.03, v.x) * smoothstep(1.0, 0.97, v.x);          // fade the bottom of the picture into the background
   gl_FragColor = vec4(mix(vec3(.051,.043,.071), c.rgb, edge), 1.);
 }`;
@@ -146,7 +142,21 @@ function load(i){
     const im = new Image();
     im.onload = () => {
       const T = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, T);
-      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);
+      const W = im.naturalWidth, H = im.naturalHeight;
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const cx = cv.getContext('2d', { willReadFrequently:true }); cx.drawImage(im,0,0);
+      const px = cx.getImageData(0,0,W,H).data, m = new Float32Array(W*H), sm = (a,b,x) => { x = Math.min(1,Math.max(0,(x-a)/(b-a))); return x*x*(3-2*x); };
+      for (let k = 0, j = 0; k < px.length; k += 4, j++) {
+        const r = px[k]/255, g = px[k+1]/255, b = px[k+2]/255, sat = (r-b)/Math.max(r,.001), hue = (g-b)/Math.max(r-b,.001);
+        m[j] = (hue >= .12 && hue <= .72 && g <= r) ? sm(.5,.62,sat)*sm(.4,.55,r) : 0;
+      }
+      const tmp = new Float32Array(W*H), R = 3, n = 2*R+1;      // soften the mask with a small box blur
+      for (let y = 0; y < H; y++) { let acc = 0; const o = y*W; for (let x = -R; x <= R; x++) acc += m[o + Math.min(W-1, Math.max(0,x))];
+        for (let x = 0; x < W; x++) { tmp[o+x] = acc/n; acc += m[o + Math.min(W-1,x+R+1)] - m[o + Math.max(0,x-R)]; } }
+      for (let x = 0; x < W; x++) { let acc = 0; for (let y = -R; y <= R; y++) acc += tmp[Math.min(H-1, Math.max(0,y))*W + x];
+        for (let y = 0; y < H; y++) { m[y*W+x] = acc/n; acc += tmp[Math.min(H-1,y+R+1)*W + x] - tmp[Math.max(0,y-R)*W + x]; } }
+      for (let k = 0, j = 0; k < px.length; k += 4, j++) px[k+3] = Math.round(m[j]*255);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,W,H,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array(px.buffer));
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -225,7 +235,7 @@ addEventListener('pointerleave', () => { pointerOn = false; });
 addEventListener('pointerup', () => { pointerOn = false; });
 
 function resize(){
-  const d = Math.min(devicePixelRatio || 1, 2);
+  const d = Math.min(devicePixelRatio || 1, 1.5);
   canvas.width = innerWidth * d; canvas.height = innerHeight * d;
   gl.viewport(0,0,canvas.width,canvas.height);
   const W = canvas.width, H = canvas.height;
@@ -244,7 +254,8 @@ async function boot(){
 }
 function frame(now){
   const dt = Math.min((now-last)/1000, .1); last = now; const t = (now-T0)/1000;
-  const tgx = pointerOn ? gx : .26*Math.sin(t*.37) + .08*Math.sin(t*.91), tgy = pointerOn ? gy : .12*Math.sin(t*.29 + 1);
+  const calm = talkOn ? 0 : 1;
+  const tgx = pointerOn ? gx : calm*(.26*Math.sin(t*.37) + .08*Math.sin(t*.91)), tgy = pointerOn ? gy : calm*.12*Math.sin(t*.29 + 1);
   tx += (tgx - tx) * (1 - Math.exp(-dt*5)); ty += (tgy - ty) * (1 - Math.exp(-dt*5));
   // blink: lid closes fast, opens a little slower, sometimes twice
   nextBlink -= dt;
