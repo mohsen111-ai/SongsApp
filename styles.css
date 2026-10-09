@@ -112,6 +112,8 @@ main > * { animation: rise .35s var(--ease) both; }
 
 /* wallpapers gallery */
 .lead { color: var(--mute); margin: 0 4px 18px; max-width: 52ch; line-height: 1.5; }
+.note { margin: 0 4px 18px; padding: 14px; border-radius: var(--radius); background: var(--card-a); border: 1px solid var(--line); }
+.note p { margin: 6px 0 12px; color: var(--mute); line-height: 1.45; font-size: 14px; }
 .lgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; padding: 0 4px; }
 .lgrid figure { margin: 0; min-width: 0; }
 .lgrid .ph { position: relative; border-radius: var(--radius); overflow: hidden; background: var(--card); aspect-ratio: 1080 / 2337; box-shadow: 0 6px 22px rgba(0, 0, 0, .25); width: 100%; display: block; transition: transform .2s var(--ease), outline-color .2s; outline: 3px solid transparent; outline-offset: 2px; }

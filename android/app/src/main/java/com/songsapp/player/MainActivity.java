@@ -10,6 +10,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(BackgroundAudioPlugin.class);
         super.onCreate(savedInstanceState);
         // Android 13+: needed so the lock-screen / notification player controls can show
         if (Build.VERSION.SDK_INT >= 33

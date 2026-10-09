@@ -229,6 +229,7 @@ function looksHtml() {
   const fig = w => `<figure><button class="ph ${w.id === wallpaper ? 'sel' : ''}" data-act="wp" data-id="${w.id}" type="button" aria-label="Use ${esc(w.name)}"><img src="${wpUrl(w)}" alt="${esc(w.name)} wallpaper" loading="lazy">${w.live ? '<span class="live">LIVE</span>' : ''}<span class="tick">${ico('check')}</span></button><figcaption>${esc(w.name)}</figcaption></figure>`;
   return `<div class="head"><h2>Looks</h2><div class="actions"><button class="btn" data-act="theme" type="button">${ico('theme')} ${{ auto: 'Auto', light: 'Light', dark: 'Dark' }[theme]}</button></div></div>
     <p class="lead">Pick a wallpaper for the whole app. The live ones move. Songs without cover art borrow a wallpaper as their cover.</p>
+    ${isNative ? `<div class="note"><b>Music stops when you leave the app?</b><p>Allow Drift to run in the background. On Xiaomi / Redmi / POCO also open Settings → Apps → Drift → Battery saver → No restrictions, and turn Autostart on.</p><button class="btn main" data-act="battery" type="button">Allow background playing</button></div>` : ''}
     <div class="lgrid"><h2>Still</h2>${WALLPAPERS.filter(w => !w.live).map(fig).join('')}<h2>Live</h2>${WALLPAPERS.filter(w => w.live).map(fig).join('')}</div>`;
 }
 
@@ -299,6 +300,7 @@ $('#main').addEventListener('click', e => {
   if (act === 'shuffleall') return playIds(shown, shown[Math.floor(Math.random() * shown.length)], true);
   if (act === 'wp') { wallpaper = actEl.dataset.id; store.set('wallpaper', wallpaper); applyLook(); updatePlayerUI(); return render(); }
   if (act === 'theme') { theme = { auto: 'light', light: 'dark', dark: 'auto' }[theme]; store.set('theme', theme); applyLook(); return render(); }
+  if (act === 'battery' && BG) { BG.requestBatteryExemption().then(r => toast(r && r.granted ? 'Already allowed' : 'Choose “Allow” in the box')).catch(() => {}); return; }
   if (act === 'newlist') return newPlaylist();
   if (act === 'openlist') { openList = +actEl.dataset.id; return render(); }
   if (act === 'back') { openList = null; return render(); }
@@ -515,7 +517,7 @@ audio.addEventListener('timeupdate', () => {
   const s = cur();
   if (s && !s.mood && !s.moodSource) { const g = viz.guess(); if (g) setMood(s, g, 'audio'); }
 });
-audio.addEventListener('play', () => { ms.state(true); updatePlayerUI(); render(); });
+audio.addEventListener('play', () => { askBatteryOnce(); ms.state(true); updatePlayerUI(); render(); });
 audio.addEventListener('pause', () => { ms.state(false); updatePlayerUI(); render(); });
 audio.addEventListener('timeupdate', updateProgress);
 audio.addEventListener('loadedmetadata', updateProgress);
@@ -627,6 +629,7 @@ window.addEventListener('popstate', () => hideFull());
    so the native plugin shows the notification and keeps the music playing with the screen off. */
 const NMS = window.NativeMediaSession || null;
 const isNative = !!(NMS && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const BG = isNative && window.Capacitor.registerPlugin ? window.Capacitor.registerPlugin('BackgroundAudio') : null;
 const ms = {
   async metadata(m) {
     try {
@@ -638,6 +641,7 @@ const ms = {
     try { if (isNative) NMS.setActionHandler({ action: a }, fn); else if ('mediaSession' in navigator) navigator.mediaSession.setActionHandler(a, fn); } catch { /* unsupported */ }
   },
   state(playing) {
+    try { if (BG) BG.setPlaying({ playing: !!playing }); } catch { /* ignore */ }
     try { if (isNative) NMS.setPlaybackState({ playbackState: playing ? 'playing' : 'paused' }); else if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch { /* ignore */ }
   },
   position(duration, position, rate) {
@@ -670,6 +674,13 @@ async function setMediaSession(s) {
   ms.handler('nexttrack', () => next(false));
   ms.handler('seekto', d => { if (d && d.seekTime != null) audio.currentTime = d.seekTime; });
   ms.state(isPlaying());
+}
+
+/* Android kills background apps aggressively (Xiaomi especially). Ask once to be exempt from battery optimisation. */
+function askBatteryOnce() {
+  if (!BG || store.get('batteryAsked', false)) return;
+  store.set('batteryAsked', true);
+  setTimeout(() => { try { BG.requestBatteryExemption(); } catch { /* ignore */ } }, 1200);
 }
 
 /* ================= moods ================= */
