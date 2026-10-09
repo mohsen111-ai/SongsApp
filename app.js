@@ -256,7 +256,7 @@ function ask(title, { fields = [], message = '', ok = 'OK', danger = false } = {
 }
 
 /* ================= rendering ================= */
-const TITLES = { library: 'Your library', favs: 'Favourites', lists: 'Playlists', recent: 'Recently played' };
+const TITLES = { library: 'Your library', favs: 'Favourites', lists: 'Playlists', recent: 'History' };
 
 function looksHtml() {
   const fig = w => `<figure><button class="ph ${w.id === wallpaper ? 'sel' : ''}" data-act="wp" data-id="${w.id}" type="button" aria-label="Use ${esc(w.name)}"><img src="${wpUrl(w)}" alt="${esc(w.name)} wallpaper" loading="lazy">${w.live ? '<span class="live">LIVE</span>' : ''}<span class="tick">${ico('check')}</span></button><figcaption>${esc(w.name)}</figcaption></figure>`;
@@ -265,6 +265,53 @@ function looksHtml() {
     <p class="lead">Pick a wallpaper for the whole app. The live ones move. Every song without cover art gets its own artwork, drawn just for it.</p>
     ${isNative ? `<div class="note"><b>Music stops when you leave the app?</b><p>Allow Drift to run in the background. On Xiaomi / Redmi / POCO also open Settings → Apps → Drift → Battery saver → No restrictions, and turn Autostart on.</p><button class="btn main" data-act="battery" type="button">Allow background playing</button></div>` : ''}
     <div class="lgrid"><h2>Still</h2>${WALLPAPERS.filter(w => !w.live).map(fig).join('')}<h2>Live</h2>${WALLPAPERS.filter(w => w.live).map(fig).join('')}</div>`;
+}
+
+/* ================= listening history ================= */
+const DAY_MS = 86400000;
+function dayLabel(t) {
+  const d = new Date(t), n = new Date();
+  const diff = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / DAY_MS);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+}
+const clockTime = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function fmtDur(secs) {
+  secs = Math.round(secs || 0);
+  if (secs < 60) return secs + ' s';
+  const m = Math.round(secs / 60);
+  return m < 60 ? m + ' min' : `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+function historyHtml() {
+  const entries = [];
+  for (const s of songs) {
+    if (s.log && s.log.length) for (const t of s.log) entries.push({ s, t });
+    else if (s.last) entries.push({ s, t: s.last }); // songs played before history existed
+  }
+  entries.sort((a, b) => b.t - a.t);
+  const feed = entries.slice(0, 120);
+  const total = songs.reduce((n, s) => n + (s.plays || 0), 0);
+  const secs = songs.reduce((n, s) => n + (s.time || 0), 0);
+  const played = songs.filter(s => (s.plays || 0) > 0);
+  const top = played.slice().sort((a, b) => (b.plays || 0) - (a.plays || 0) || (b.time || 0) - (a.time || 0)).slice(0, 5);
+  shown = [];
+  const seen = new Set();
+  for (const e of feed) if (!seen.has(e.s.id)) { seen.add(e.s.id); shown.push(e.s.id); }
+  if (!feed.length) return head('History', '') + emptyHtml('No history yet', 'Play a song for about 30 seconds and it shows up here, with how many times you’ve listened.', false);
+  let html = `<div class="head"><h2>History</h2><div class="actions"><button class="btn" data-act="clearhist" type="button">${ico('trash')} Clear</button></div></div>
+    <div class="stat-tiles"><div><b>${total}</b><span>listens</span></div><div><b>${fmtDur(secs)}</b><span>listened</span></div><div><b>${played.length}</b><span>songs played</span></div></div>`;
+  if (top.length) {
+    const max = top[0].plays || 1;
+    html += '<h3 class="sub">Most played</h3>' + top.map((s, i) => rowHtml(s, { rank: i + 1, bar: Math.max(6, Math.round((s.plays / max) * 100)), count: true })).join('');
+  }
+  let day = '';
+  for (const e of feed) {
+    const dl = dayLabel(e.t);
+    if (dl !== day) { day = dl; html += `<h3 class="day">${esc(dl)}</h3>`; }
+    html += rowHtml(e.s, { when: clockTime(e.t) });
+  }
+  return html;
 }
 
 const navStack = []; // where you came from (tabs / playlist), for the Back button
@@ -285,6 +332,8 @@ function render() {
   } else if (view === 'looks') {
     shown = [];
     html = looksHtml();
+  } else if (view === 'recent') {
+    html = historyHtml();
   } else if (view === 'lists' && openList === null) {
     html = head('Playlists', `${lists.length}`) + `<div class="grid">${lists.map(plCard).join('')}<button class="pl new" data-act="newlist" type="button">＋ New playlist</button></div>`;
     shown = [];
@@ -298,7 +347,6 @@ function render() {
   } else {
     let list = songs.slice();
     if (view === 'favs') list = list.filter(s => s.fav).sort(byTitle);
-    else if (view === 'recent') list = list.filter(s => s.last).sort((a, b) => b.last - a.last).slice(0, 60);
     else list.sort(byTitle);
     shown = list.map(s => s.id);
     if (!songs.length) html = emptyHtml('Welcome to Drift', 'Add songs from your phone and I’ll keep them here — private, offline, no ads.', true);
@@ -313,12 +361,15 @@ const playBar = n => n ? `<div class="head" style="padding-top:0"><div class="ac
 function emptyHtml(t, p, withAdd) {
   return `<div class="empty"><img src="icons/mascot.svg" alt=""><h3>${esc(t)}</h3><p>${esc(p)}</p>${withAdd ? '<button class="pill" data-act="add" type="button">＋ Add songs</button>' : ''}</div>`;
 }
-function rowHtml(s) {
+function rowHtml(s, o) {
+  o = (o && typeof o === 'object') ? o : {}; // (list.map passes an index as 2nd argument; ignore it)
   const now = cur() && cur().id === s.id;
-  return `<div class="row ${now ? 'now' : ''}" data-id="${s.id}">${thumb(s)}
-    <div class="meta"><b>${esc(s.title)}</b><span>${esc(s.artist || 'Unknown artist')}${s.album ? ' · ' + esc(s.album) : ''}</span></div>
+  const plays = !o.when && !o.bar && s.plays ? ` · ${s.plays} ${s.plays === 1 ? 'play' : 'plays'}` : '';
+  return `<div class="row ${now ? 'now' : ''}" data-id="${s.id}">${o.rank ? `<b class="rank">${o.rank}</b>` : ''}${thumb(s)}
+    <div class="meta"><b>${esc(s.title)}</b>${o.bar ? `<i class="bar"><u style="width:${o.bar}%"></u></i>` : `<span>${esc(s.artist || 'Unknown artist')}${s.album ? ' · ' + esc(s.album) : ''}${plays}</span>`}</div>
+    ${o.count ? `<span class="count">${s.plays}×</span>` : ''}${o.when ? `<span class="when">${esc(o.when)}</span>` : ''}
     ${now ? `<i class="eq ${isPlaying() ? '' : 'paused'}"><u></u><u></u><u></u></i>` : ''}
-    <button class="ic heart ${s.fav ? 'on' : ''}" data-act="fav" type="button" aria-label="Favourite">${ico('heart', s.fav ? 'fill' : '')}</button>
+    ${o.when || o.count ? '' : `<button class="ic heart ${s.fav ? 'on' : ''}" data-act="fav" type="button" aria-label="Favourite">${ico('heart', s.fav ? 'fill' : '')}</button>`}
     <button class="ic" data-act="more" type="button" aria-label="More">${ico('more')}</button></div>`;
 }
 function plCard(l) {
@@ -341,6 +392,14 @@ $('#main').addEventListener('click', e => {
   if (act === 'wp') { wallpaper = actEl.dataset.id; store.set('wallpaper', wallpaper); applyLook(); updatePlayerUI(); return render(); }
   if (act === 'theme') { theme = { auto: 'light', light: 'dark', dark: 'auto' }[theme]; store.set('theme', theme); applyLook(); return render(); }
   if (act === 'battery' && BG) { BG.requestBatteryExemption().then(r => toast(r && r.granted ? 'Already allowed' : 'Choose “Allow” in the box')).catch(() => {}); return; }
+  if (act === 'clearhist') {
+    ask('Clear history?', { message: 'Play counts and listening time go back to zero. Your songs stay.', ok: 'Clear', danger: true }).then(async yes => {
+      if (!yes) return;
+      for (const s of songs) { s.plays = 0; s.time = 0; s.log = []; s.last = 0; await DB.put('songs', s).catch(() => {}); }
+      render(); updatePlayerUI(); toast('History cleared');
+    });
+    return;
+  }
   if (act === 'newlist') return newPlaylist();
   if (act === 'openlist') { navStack.push({ view, openList }); openList = +actEl.dataset.id; return render(); }
   if (act === 'back') { goBack(); return; }
@@ -517,7 +576,7 @@ function loadCurrent(autoplay) {
   curUrl = URL.createObjectURL(s.blob);
   audio.src = curUrl;
   if (autoplay) audio.play().catch(() => toast('Tap play to start'));
-  s.plays = (s.plays || 0) + 1;
+  startListen(s);
   s.last = Date.now();
   DB.put('songs', s).catch(() => {});
   viz.setMood(moodOf(s));
@@ -537,7 +596,7 @@ function stopAll() {
 }
 function next(auto) {
   if (!queue.length) return;
-  if (auto && repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+  if (auto && repeat === 'one') { startListen(cur()); audio.currentTime = 0; audio.play().catch(() => {}); return; }
   if (qi + 1 < queue.length) qi++;
   else if (repeat === 'all' || !auto) qi = 0;
   else { audio.pause(); audio.currentTime = 0; updatePlayerUI(); render(); return; }
@@ -553,6 +612,32 @@ function togglePlay() {
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 }
 
+/* A "listen" counts once you've really heard about 30 seconds (or half of a short song). Skipping through doesn't count. */
+const listen = { id: null, secs: 0, counted: false, last: 0, saveT: 0 };
+function startListen(s) { listen.id = s ? s.id : null; listen.secs = 0; listen.counted = false; listen.last = 0; }
+function saveSoon(s) { clearTimeout(listen.saveT); listen.saveT = setTimeout(() => DB.put('songs', s).catch(() => {}), 4000); }
+function trackListen() {
+  const s = cur();
+  if (!s || listen.id !== s.id) return;
+  const t = audio.currentTime || 0;
+  if (!audio.paused) {
+    const d = t - listen.last;
+    if (d > 0 && d < 1.5) { listen.secs += d; s.time = (s.time || 0) + d; saveSoon(s); } // seeks (big jumps) don't count as listening
+  }
+  listen.last = t;
+  const need = Math.min(30, Math.max(2, (audio.duration || 60) * 0.5)); // 30 s, or half of a very short song
+  if (!listen.counted && listen.secs >= need) {
+    listen.counted = true;
+    s.plays = (s.plays || 0) + 1;
+    (s.log = s.log || []).push(Date.now());
+    if (s.log.length > 100) s.log.splice(0, s.log.length - 100);
+    s.last = Date.now();
+    DB.put('songs', s).catch(() => {});
+    updatePlayerUI();
+    if (view === 'recent' && !$('#q').value.trim()) render();
+  }
+}
+audio.addEventListener('timeupdate', trackListen);
 audio.addEventListener('ended', () => next(true));
 audio.addEventListener('playing', () => { if (!isNative && vizFor !== curUrl) { vizFor = curUrl; viz.connect(audio); } updatePlayerUI(); });
 audio.addEventListener('timeupdate', () => {
@@ -560,7 +645,7 @@ audio.addEventListener('timeupdate', () => {
   if (s && !s.mood && !s.moodSource) { const g = viz.guess(); if (g) setMood(s, g, 'audio'); }
 });
 audio.addEventListener('play', () => { askBatteryOnce(); ms.state(true); updatePlayerUI(); refreshEq(); });
-audio.addEventListener('pause', () => { ms.state(false); updatePlayerUI(); refreshEq(); });
+audio.addEventListener('pause', () => { const cs = cur(); if (cs) DB.put('songs', cs).catch(() => {}); ms.state(false); updatePlayerUI(); refreshEq(); });
 function refreshEq() { document.querySelectorAll('.eq').forEach(e => e.classList.toggle('paused', !isPlaying())); }
 audio.addEventListener('timeupdate', updateProgress);
 audio.addEventListener('loadedmetadata', updateProgress);
@@ -611,6 +696,8 @@ function updatePlayerUI() {
   setBackdrop(coverUrl(s) || w);
   $('#fullTitle').textContent = s.title;
   $('#fullArtist').textContent = s.artist || 'Unknown artist';
+  const n = s.plays || 0;
+  $('#fullStats').textContent = (n === 0 ? 'Not counted yet' : n === 1 ? 'Played once' : `Played ${n} times`) + (s.time ? ` · ${fmtDur(s.time)} listened` : '');
   const mk = moodOf(s);
   $('#moodBtn').innerHTML = `<i style="background:${MOODS[mk].c[0]};color:${MOODS[mk].c[0]}"></i>${MOODS[mk].name}${s.moodSource === 'audio' ? ' · guess' : ''}`;
   $('#fullFav').innerHTML = ico('heart', s.fav ? 'fill' : '');

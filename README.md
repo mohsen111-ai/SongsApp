@@ -6,7 +6,7 @@ The app is named after its mascot, **Drift** the jellyfish. Look: midnight teal 
 
 ## Features
 - Add songs from your phone (MP3, M4A, WAV, FLAC, OGG…); title, artist, album and cover art are read from the file's tags
-- Library, search, favourites, playlists, recently played, queue ("play next" / "add to queue")
+- Library, search, favourites, playlists, listening history (plays per song, listening time, most played, day-by-day log), queue ("play next" / "add to queue")
 - Shuffle, repeat (off / all / one), seek, lock-screen controls
 - 8 original wallpapers (3 animated "live" ones) for the app backdrop, also used as cover art for songs that have none
 - Installable as an app on your home screen (PWA), opens offline
