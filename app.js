@@ -193,6 +193,35 @@ function openSheet(title, items) {
 }
 sheet.addEventListener('click', e => { if (e.target === sheet) sheet.close(); });
 
+/* in-app replacement for prompt()/confirm(): resolves to an array of the field values, or null if cancelled */
+const askDlg = $('#ask');
+function ask(title, { fields = [], message = '', ok = 'OK', danger = false } = {}) {
+  return new Promise(resolve => {
+    $('#askTitle').textContent = title;
+    $('#askMsg').textContent = message;
+    $('#askMsg').hidden = !message;
+    $('#askFields').innerHTML = fields.map((f, i) => `<label>${esc(f.label)}<input data-i="${i}" value="${esc(f.value || '')}" autocomplete="off" maxlength="120"></label>`).join('');
+    const okBtn = $('#askOk');
+    okBtn.textContent = ok;
+    okBtn.classList.toggle('danger', danger);
+    const form = $('#askForm');
+    let result = null;
+    const onSubmit = e => { e.preventDefault(); result = [...form.querySelectorAll('input')].map(i => i.value); askDlg.close(); };
+    const onCancel = () => askDlg.close();
+    const onBackdrop = e => { if (e.target === askDlg) askDlg.close(); };
+    const onClose = () => {
+      form.removeEventListener('submit', onSubmit); $('#askCancel').removeEventListener('click', onCancel);
+      askDlg.removeEventListener('click', onBackdrop); askDlg.removeEventListener('close', onClose);
+      resolve(result);
+    };
+    form.addEventListener('submit', onSubmit); $('#askCancel').addEventListener('click', onCancel);
+    askDlg.addEventListener('click', onBackdrop); askDlg.addEventListener('close', onClose);
+    askDlg.showModal();
+    const first = form.querySelector('input');
+    if (first) { first.focus(); first.select(); }
+  });
+}
+
 /* ================= rendering ================= */
 const TITLES = { library: 'Your library', favs: 'Favourites', lists: 'Playlists', recent: 'Recently played' };
 
@@ -328,11 +357,10 @@ function enqueue(id, next) {
 
 async function editSong(id) {
   const s = byId(id);
-  const title = prompt('Title', s.title);
-  if (title === null) return;
-  const artist = prompt('Artist', s.artist || '');
-  s.title = title.trim() || s.title;
-  if (artist !== null) s.artist = artist.trim();
+  const r = await ask('Edit song', { fields: [{ label: 'Title', value: s.title }, { label: 'Artist', value: s.artist || '' }], ok: 'Save' });
+  if (!r) return;
+  s.title = r[0].trim() || s.title;
+  s.artist = r[1].trim();
   await DB.put('songs', s);
   render();
   updatePlayerUI();
@@ -340,7 +368,7 @@ async function editSong(id) {
 
 async function deleteSong(id) {
   const s = byId(id);
-  if (!s || !confirm(`Delete “${s.title}” from this phone?`)) return;
+  if (!s || !(await ask('Delete this song?', { message: `“${s.title}” will be removed from this phone.`, ok: 'Delete', danger: true }))) return;
   const wasCurrent = cur() && cur().id === id;
   await DB.del('songs', id);
   songs = songs.filter(x => x.id !== id);
@@ -358,7 +386,8 @@ async function deleteSong(id) {
 }
 
 async function newPlaylist(thenAdd) {
-  const name = (prompt('Playlist name') || '').trim();
+  const r = await ask('New playlist', { fields: [{ label: 'Name' }], ok: 'Create' });
+  const name = ((r && r[0]) || '').trim();
   if (!name) return;
   const l = { name, songIds: thenAdd ? [thenAdd] : [] };
   l.id = await DB.put('playlists', l);
@@ -388,8 +417,8 @@ async function removeFromPlaylist(listId, songId) {
 function playlistMenu() {
   const l = lists.find(x => x.id === openList);
   openSheet(l.name, [
-    { icon: 'edit', label: 'Rename', fn: async () => { const n = (prompt('Playlist name', l.name) || '').trim(); if (n) { l.name = n; await DB.put('playlists', l); render(); } } },
-    { icon: 'trash', label: 'Delete playlist', danger: true, fn: async () => { if (confirm(`Delete playlist “${l.name}”? Your songs stay.`)) { await DB.del('playlists', l.id); lists = lists.filter(x => x.id !== l.id); openList = null; render(); } } }
+    { icon: 'edit', label: 'Rename', fn: async () => { const r = await ask('Rename playlist', { fields: [{ label: 'Name', value: l.name }], ok: 'Save' }); const n = ((r && r[0]) || '').trim(); if (n) { l.name = n; await DB.put('playlists', l); render(); } } },
+    { icon: 'trash', label: 'Delete playlist', danger: true, fn: async () => { if (await ask('Delete playlist?', { message: `“${l.name}” goes away. Your songs stay.`, ok: 'Delete', danger: true })) { await DB.del('playlists', l.id); lists = lists.filter(x => x.id !== l.id); openList = null; render(); } } }
   ]);
 }
 

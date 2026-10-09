@@ -198,6 +198,15 @@ dialog::backdrop { background: rgba(2, 10, 15, .62); backdrop-filter: blur(3px);
 .sheet-in button:active { background: var(--card); }
 .sheet-in button.danger { color: var(--pink); }
 .sheet-in button svg { color: var(--mute); }
+.ask-in { border-radius: 26px; margin: 0 12px calc(12px + env(safe-area-inset-bottom)); }
+.ask-msg { margin: 0 8px 12px; color: var(--mute); line-height: 1.45; }
+.ask-in label { display: block; margin: 0 8px 12px; color: var(--mute); font-size: 13px; font-weight: 600; }
+.ask-in input { display: block; width: 100%; margin-top: 6px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-size: 16px; outline: none; }
+.ask-in input:focus { border-color: var(--accent); }
+.ask-btns { display: flex; gap: 10px; margin-top: 8px; }
+.sheet-in .ask-btns button { justify-content: center; padding: 13px 10px; border-radius: 99px; background: var(--card); font-weight: 700; }
+.sheet-in .ask-btns .ok { background: var(--accent); color: var(--on-accent); }
+.sheet-in .ask-btns .ok.danger { background: var(--pink); color: #fff; }
 .toast { position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; background: var(--card); padding: 11px 18px; border-radius: 99px; font-weight: 600; font-size: 14px; border: 1px solid var(--line); box-shadow: 0 12px 30px rgba(0, 0, 0, .5); transition: opacity .25s, transform .3s var(--ease); z-index: 40; max-width: 88vw; text-align: center; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
