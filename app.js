@@ -544,7 +544,7 @@ function togglePlay() {
 }
 
 audio.addEventListener('ended', () => next(true));
-audio.addEventListener('playing', () => { if (vizFor !== curUrl) { vizFor = curUrl; viz.connect(audio); } updatePlayerUI(); });
+audio.addEventListener('playing', () => { if (!isNative && vizFor !== curUrl) { vizFor = curUrl; viz.connect(audio); } updatePlayerUI(); });
 audio.addEventListener('timeupdate', () => {
   const s = cur();
   if (s && !s.mood && !s.moodSource) { const g = viz.guess(); if (g) setMood(s, g, 'audio'); }
@@ -707,6 +707,32 @@ async function setMediaSession(s) {
   ms.handler('nexttrack', () => next(false));
   ms.handler('seekto', d => { if (d && d.seekTime != null) audio.currentTime = d.seekTime; });
   ms.state(isPlaying());
+}
+
+/* Bluetooth / headphones connecting or disconnecting moves the sound to a new output. The WebView can stay stuck on the old one
+   (it looks like it plays but you hear nothing), so reopen the audio element on the new route and carry on from the same spot. */
+const routeReadyAt = performance.now() + 4000; // the system reports existing devices right at start-up; ignore those
+let routeTimer = 0;
+function reopenAudio() {
+  const src = audio.getAttribute('src') || audio.src;
+  if (!src) return;
+  const wasPlaying = !audio.paused;
+  const at = audio.currentTime;
+  const onMeta = () => {
+    audio.removeEventListener('loadedmetadata', onMeta);
+    try { audio.currentTime = at; } catch { /* ignore */ }
+    if (wasPlaying) audio.play().catch(() => {});
+  };
+  audio.addEventListener('loadedmetadata', onMeta);
+  audio.pause();
+  audio.load();
+}
+if (BG && BG.addListener) {
+  BG.addListener('routeChanged', () => {
+    if (performance.now() < routeReadyAt) return;
+    clearTimeout(routeTimer);
+    routeTimer = setTimeout(reopenAudio, 1200);
+  });
 }
 
 /* Android kills background apps aggressively (Xiaomi especially). Ask once to be exempt from battery optimisation. */
