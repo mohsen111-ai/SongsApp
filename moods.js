@@ -177,7 +177,7 @@ function createViz(canvas, getCover) {
 }
 
 /* ---------- lock-screen picture for songs without cover art (the phone can only show a still image) ---------- */
-function moodArt(letter, moodKey) {
+function moodArt(letter, moodKey, asData) {
   const m = MOODS[moodKey] || MOODS.chill, c = m.c, S = 512;
   const cv = document.createElement('canvas'); cv.width = cv.height = S;
   const x = cv.getContext('2d');
@@ -193,5 +193,6 @@ function moodArt(letter, moodKey) {
   x.globalAlpha = 1; x.fillStyle = '#fff'; x.shadowColor = 'rgba(0,0,0,.5)'; x.shadowBlur = 24;
   x.font = '800 230px "Syne", system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(letter || '♪').toUpperCase(), S / 2, S / 2 + 10);
   x.shadowBlur = 0; x.font = '700 30px system-ui, sans-serif'; x.fillStyle = c[2]; x.fillText(m.name.toUpperCase(), S / 2, S - 44);
+  if (asData) return Promise.resolve(cv.toDataURL('image/png'));
   return new Promise(res => cv.toBlob(b => res(b ? URL.createObjectURL(b) : null), 'image/png'));
 }

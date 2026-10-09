@@ -515,8 +515,8 @@ audio.addEventListener('timeupdate', () => {
   const s = cur();
   if (s && !s.mood && !s.moodSource) { const g = viz.guess(); if (g) setMood(s, g, 'audio'); }
 });
-audio.addEventListener('play', () => { updatePlayerUI(); render(); });
-audio.addEventListener('pause', () => { updatePlayerUI(); render(); });
+audio.addEventListener('play', () => { ms.state(true); updatePlayerUI(); render(); });
+audio.addEventListener('pause', () => { ms.state(false); updatePlayerUI(); render(); });
 audio.addEventListener('timeupdate', updateProgress);
 audio.addEventListener('loadedmetadata', updateProgress);
 audio.addEventListener('error', () => { if (queue.length) { toast('Can’t play this file'); if (qi + 1 < queue.length) { qi++; loadCurrent(true); } } });
@@ -533,9 +533,8 @@ function updateProgress() {
   }
   $('#tCur').textContent = fmt(t);
   $('#tDur').textContent = fmt(d);
-  if ('mediaSession' in navigator && d && navigator.mediaSession.setPositionState) {
-    try { navigator.mediaSession.setPositionState({ duration: d, position: Math.min(t, d), playbackRate: audio.playbackRate }); } catch { /* ignore */ }
-  }
+  if (d) ms.position(d, Math.min(t, d), audio.playbackRate);
+
 }
 
 function updatePlayerUI() {
@@ -619,30 +618,58 @@ seekEl.addEventListener('change', () => {
   seeking = false;
 });
 
-function openFull() { const f = $('#full'); f.classList.add('open'); f.setAttribute('aria-hidden', 'false'); viz.resize(); updatePlayerUI(); }
-function closeFull() { const f = $('#full'); f.classList.remove('open'); f.setAttribute('aria-hidden', 'true'); viz.stop(); }
+function openFull() { const f = $('#full'); if (!f.classList.contains('open')) { try { history.pushState({ full: 1 }, ''); } catch { /* ignore */ } } f.classList.add('open'); f.setAttribute('aria-hidden', 'false'); viz.resize(); updatePlayerUI(); }
+function closeFull() { if (history.state && history.state.full) { history.back(); return; } hideFull(); }
+function hideFull() { const f = $('#full'); f.classList.remove('open'); f.setAttribute('aria-hidden', 'true'); viz.stop(); }
+window.addEventListener('popstate', () => hideFull());
 
-/* lock-screen / headphone controls (the phone draws that widget itself, so it can only show a still picture) */
+/* lock-screen / headphone controls. In a browser this is the Media Session API; in the Android app the WebView has none,
+   so the native plugin shows the notification and keeps the music playing with the screen off. */
+const NMS = window.NativeMediaSession || null;
+const isNative = !!(NMS && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const ms = {
+  async metadata(m) {
+    try {
+      if (isNative) await NMS.setMetadata({ title: m.title, artist: m.artist, album: m.album, artwork: m.artwork });
+      else if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata(m);
+    } catch { /* ignore */ }
+  },
+  handler(a, fn) {
+    try { if (isNative) NMS.setActionHandler({ action: a }, fn); else if ('mediaSession' in navigator) navigator.mediaSession.setActionHandler(a, fn); } catch { /* unsupported */ }
+  },
+  state(playing) {
+    try { if (isNative) NMS.setPlaybackState({ playbackState: playing ? 'playing' : 'paused' }); else if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch { /* ignore */ }
+  },
+  position(duration, position, rate) {
+    try {
+      if (isNative) NMS.setPositionState({ duration, position, playbackRate: rate });
+      else if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) navigator.mediaSession.setPositionState({ duration, position, playbackRate: rate });
+    } catch { /* ignore */ }
+  }
+};
+const blobToDataUrl = b => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(b); });
+
 let artUrl = null;
 async function setMediaSession(s) {
-  if (!('mediaSession' in navigator)) return;
-  const meta = art => new MediaMetadata({ title: s.title, artist: s.artist || 'Unknown artist', album: s.album || 'SongsApp', artwork: art });
+  const base = { title: s.title, artist: s.artist || 'Unknown artist', album: s.album || 'SongsApp' };
   const u = coverUrl(s);
-  navigator.mediaSession.metadata = meta(u ? [{ src: u, sizes: '512x512', type: s.cover.type || 'image/jpeg' }] : []);
-  if (!u) {
-    const url = await moodArt((s.title || '?').charAt(0), moodOf(s));
+  if (u) {
+    const src = isNative ? await blobToDataUrl(s.cover) : u;
+    await ms.metadata({ ...base, artwork: src ? [{ src, sizes: '512x512', type: s.cover.type || 'image/jpeg' }] : [] });
+  } else {
+    await ms.metadata({ ...base, artwork: [] });
+    const url = await moodArt((s.title || '?').charAt(0), moodOf(s), isNative);
     if (url && cur() && cur().id === s.id) {
-      navigator.mediaSession.metadata = meta([{ src: url, sizes: '512x512', type: 'image/png' }]);
-      if (artUrl) URL.revokeObjectURL(artUrl);
-      artUrl = url;
-    } else if (url) URL.revokeObjectURL(url);
+      await ms.metadata({ ...base, artwork: [{ src: url, sizes: '512x512', type: 'image/png' }] });
+      if (!isNative) { if (artUrl) URL.revokeObjectURL(artUrl); artUrl = url; }
+    } else if (url && !isNative) URL.revokeObjectURL(url);
   }
-  const set = (a, fn) => { try { navigator.mediaSession.setActionHandler(a, fn); } catch { /* unsupported */ } };
-  set('play', () => audio.play());
-  set('pause', () => audio.pause());
-  set('previoustrack', prev);
-  set('nexttrack', () => next(false));
-  set('seekto', d => { if (d.seekTime != null) audio.currentTime = d.seekTime; });
+  ms.handler('play', () => audio.play());
+  ms.handler('pause', () => audio.pause());
+  ms.handler('previoustrack', prev);
+  ms.handler('nexttrack', () => next(false));
+  ms.handler('seekto', d => { if (d && d.seekTime != null) audio.currentTime = d.seekTime; });
+  ms.state(isPlaying());
 }
 
 /* ================= moods ================= */
@@ -681,7 +708,7 @@ function drawTabIcons() {
     toast('Storage is unavailable in this browser mode');
   }
   render();
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  if (!window.Capacitor && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 })();

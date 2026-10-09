@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SongsApp</string>
+    <string name="title_activity_main">SongsApp</string>
+    <string name="package_name">com.songsapp.player</string>
+    <string name="custom_url_scheme">com.songsapp.player</string>
+</resources>

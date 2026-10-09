@@ -1,0 +1,9 @@
+{
+  "appId": "com.songsapp.player",
+  "appName": "SongsApp",
+  "webDir": "www",
+  "backgroundColor": "#05121a",
+  "android": {
+    "allowMixedContent": false
+  }
+}
