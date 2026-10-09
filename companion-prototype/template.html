@@ -36,6 +36,7 @@
 <script>
 const POSES = /*POSES*/[];
 const FEATS = /*FEATS*/[];
+const EXTRAS = /*EXTRAS*/{};   // real edited eyes-closed / mouth-open pictures + masks, by pose index
 
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl', { antialias:true, premultipliedAlpha:false });
@@ -45,7 +46,8 @@ void main(){ vec2 q = p*0.5+0.5; v = vec2(q.x*uvS.x + uvO.x, (1.0-q.y)*uvS.y + u
 
 const FS = `precision highp float;
 varying vec2 v;
-uniform sampler2D A, B;
+uniform sampler2D A, B, X, Y, Z;
+uniform float hx;   // 1 when pose A has real eyes-closed (X), mouth-open (Y) pictures and masks (Z)
 uniform float mixv, t, blink, tx, ty, talk, mouth;
 uniform vec4 EA0, SA0, EA1, SA1, MA, NA;   // pose A: eye geometry+style (x2), mouth geometry+style
 uniform vec4 EB0, SB0, EB1, SB1, MB, NB;   // pose B
@@ -76,7 +78,7 @@ vec3 eyeLid(vec3 col, vec2 p, vec4 e, vec4 s, float b){
   float line = exp(-pow((w - wt)/th, 2.)) * smoothstep(.08,.30,b) * inside * (1. - smoothstep(.9,1.12,abs(u)));
   return mix(col, vec3(.09,.05,.06), clamp(line*.9,0.,1.));
 }
-vec4 live(sampler2D T, vec2 p, vec4 e0, vec4 s0, vec4 e1, vec4 s1, vec4 mg, vec4 ms){
+vec4 live(sampler2D T, vec2 p, vec4 e0, vec4 s0, vec4 e1, vec4 s1, vec4 mg, vec4 ms, float real){
   // breathing about the bottom centre
   float br = sin(t*1.5)*.5+.5;
   p = (p - vec2(.5,1.)) / (1. + .010*br + .006*talk*sin(t*9.)) + vec2(.5,1.);
@@ -97,7 +99,7 @@ vec4 live(sampler2D T, vec2 p, vec4 e0, vec4 s0, vec4 e1, vec4 s1, vec4 mg, vec4
   p += d;
   // mouth: the lower lip slides down and the gap shows the inside of her mouth
   float gapM = 0.; float opened = 0.; float uu = 0.; float ww = 0.;
-  if (ms.y > .5 && mouth > .004) {
+  if (real < .5 && ms.y > .5 && mouth > .004) {
     vec2 d0 = p - mg.xy; float ca = cos(ms.x), sa = sin(ms.x);
     uu = (d0.x*ca + d0.y*sa) / mg.z; ww = (-d0.x*sa + d0.y*ca) / mg.w;
     float k = (1. - smoothstep(.7,1.5,abs(uu))) * (1. - smoothstep(1.4,3.6,ww)) * smoothstep(-3.,-1.4,ww);
@@ -109,12 +111,18 @@ vec4 live(sampler2D T, vec2 p, vec4 e0, vec4 s0, vec4 e1, vec4 s1, vec4 mg, vec4
   }
   vec4 col = texture2D(T,p);
   col.rgb = mix(col.rgb, mix(vec3(.08,.025,.04), vec3(.36,.10,.15), smoothstep(.35,1.,opened)*.7*mouth), gapM);
-  col.rgb = eyeLid(col.rgb, p, e0, s0, blink);
-  col.rgb = eyeLid(col.rgb, p, e1, s1, blink);
+  if (real > .5) {
+    vec2 mk = texture2D(Z,p).rg;
+    col.rgb = mix(col.rgb, texture2D(X,p).rgb, mk.r * blink);
+    col.rgb = mix(col.rgb, texture2D(Y,p).rgb, mk.g * smoothstep(.08,.85,mouth));
+  } else {
+    col.rgb = eyeLid(col.rgb, p, e0, s0, blink);
+    col.rgb = eyeLid(col.rgb, p, e1, s1, blink);
+  }
   return col;
 }
 void main(){
-  vec4 c = mix(live(A,v,EA0,SA0,EA1,SA1,MA,NA), live(B,v,EB0,SB0,EB1,SB1,MB,NB), mixv);
+  vec4 c = mix(live(A,v,EA0,SA0,EA1,SA1,MA,NA,hx), live(B,v,EB0,SB0,EB1,SB1,MB,NB,0.), mixv);
   float edge = smoothstep(1.0, 0.88, v.y) * smoothstep(0.0, 0.03, v.x) * smoothstep(1.0, 0.97, v.x);          // fade the bottom of the picture into the background
   gl_FragColor = vec4(mix(vec3(.051,.043,.071), c.rgb, edge), 1.);
 }`;
@@ -129,7 +137,7 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.ST
 const loc = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
 const U = n => gl.getUniformLocation(prog, n);
 const feat = {}; ['EA0','SA0','EA1','SA1','MA','NA','EB0','SB0','EB1','SB1','MB','NB'].forEach(n => feat[n] = U(n));
-const u = { mouth:U('mouth'), uvS:U('uvS'), uvO:U('uvO'), A:U('A'), B:U('B'), mixv:U('mixv'), t:U('t'), blink:U('blink'), tx:U('tx'), ty:U('ty'), talk:U('talk') };
+const u = { hx:U('hx'), X:U('X'), Y:U('Y'), Z:U('Z'), mouth:U('mouth'), uvS:U('uvS'), uvO:U('uvO'), A:U('A'), B:U('B'), mixv:U('mixv'), t:U('t'), blink:U('blink'), tx:U('tx'), ty:U('ty'), talk:U('talk') };
 
 const tex = [];
 function load(i){
@@ -149,6 +157,18 @@ function load(i){
   });
 }
 
+const extra = {};   // pose index -> [closed, open, mask] textures
+function loadImg(src, filter){
+  return new Promise(res => { const im = new Image(); im.onload = () => {
+    const T = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, T);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    res(T); }; im.src = src; });
+}
+async function loadExtras(){
+  for (const k of Object.keys(EXTRAS)) { const e = EXTRAS[k]; extra[k] = [await loadImg(e.x), await loadImg(e.y), await loadImg(e.z)]; }
+}
 let cur = 0, nxt = 0, mixv = 1, fading = false;
 async function setPose(i){
   if (i === cur && !fading) return;
@@ -218,7 +238,7 @@ addEventListener('resize', resize); resize();
 
 let last = performance.now(), T0 = last;
 async function boot(){
-  await load(0); strip.children[0].classList.add('on');
+  await load(0); strip.children[0].classList.add('on'); loadExtras();
   POSES.forEach((_,i) => i && setTimeout(() => load(i), 300*i));
   requestAnimationFrame(frame);
 }
@@ -248,6 +268,9 @@ function frame(now){
   const tA = tex[cur], tB = tex[fading ? nxt : cur];
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tA); gl.uniform1i(u.A, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tB); gl.uniform1i(u.B, 1);
+  const ex = extra[cur];
+  [[2,u.X,ex?ex[0]:tA],[3,u.Y,ex?ex[1]:tA],[4,u.Z,ex?ex[2]:tA]].forEach(([n,loc,T]) => { gl.activeTexture(gl.TEXTURE0+n); gl.bindTexture(gl.TEXTURE_2D, T); gl.uniform1i(loc, n); });
+  gl.uniform1f(u.hx, ex ? 1 : 0);
   gl.uniform1f(u.mixv, fading ? mixv : 0);
   gl.uniform1f(u.t, window.__t != null ? window.__t : t); gl.uniform1f(u.blink, bl);
   featUniforms(cur,'A'); featUniforms(fading ? nxt : cur,'B'); gl.uniform1f(u.mouth, window.__mouth != null ? window.__mouth : mouthAmt);
