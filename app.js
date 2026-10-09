@@ -27,8 +27,25 @@ const P = {
   trash: '<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>',
   edit: '<path d="M4 20l4-1 11-11-3-3L5 16z"/>',
   queue: '<path d="M4 7h11M4 12h11M4 17h6"/><path d="M18 14v6M15 17h6"/>',
-  next2: '<path d="M5 6l7 6-7 6zM13 6l7 6-7 6z"/>'
+  next2: '<path d="M5 6l7 6-7 6zM13 6l7 6-7 6z"/>',
+  looks: '<rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9.5" r="1.6"/><path d="M5 17l5-5 4 4 2-2 3 3"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  theme: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>'
 };
+
+/* wallpapers: used as the app backdrop, as cover art for songs without any, and as the gallery in "Looks" */
+const WALLPAPERS = [
+  { id: 'night-tide', name: 'Night Tide' },
+  { id: 'ember-dunes', name: 'Ember Dunes' },
+  { id: 'glass-forest', name: 'Glass Forest' },
+  { id: 'low-orbit', name: 'Low Orbit' },
+  { id: 'violet-rain', name: 'Violet Rain' },
+  { id: 'paper-lanterns', name: 'Paper Lanterns', live: true },
+  { id: 'aurora-veil', name: 'Aurora Veil', live: true },
+  { id: 'starfield-drift', name: 'Starfield Drift', live: true }
+];
+const wpUrl = w => `wallpapers/${w.id}.svg`;
+const wpFor = str => WALLPAPERS[[...String(str)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 997, 7) % WALLPAPERS.length];
 const FILLED = new Set(['play', 'pause', 'more', 'next2']);
 const ico = (n, extra = '') => `<svg class="i ${FILLED.has(n) || extra === 'fill' ? 'fill' : ''}" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
 // next/prev look better as strokes + fill mix; keep outline paths filled for the triangle only
@@ -134,7 +151,17 @@ function coverUrl(s) {
 function thumb(s, cls = 'cov') {
   const u = coverUrl(s);
   return u ? `<img class="${cls}" src="${u}" alt="" loading="lazy">`
-    : `<div class="${cls}" style="--h:${hue(s.title + s.artist)}">${esc((s.title || '?').trim().charAt(0).toUpperCase())}</div>`;
+    : `<div class="${cls} art" style="background-image:url(${wpUrl(wpFor(s.title + s.artist))})">${esc((s.title || '?').trim().charAt(0).toUpperCase())}</div>`;
+}
+
+/* ================= look: wallpaper + theme ================= */
+let wallpaper = store.get('wallpaper', 'night-tide');
+let theme = store.get('theme', 'auto'); // auto | light | dark
+function applyLook() {
+  const w = WALLPAPERS.find(x => x.id === wallpaper) || WALLPAPERS[0];
+  document.documentElement.style.setProperty('--wp', `url(${wpUrl(w)})`);
+  if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.dataset.theme = theme;
 }
 
 /* ================= toast + sheet ================= */
@@ -164,6 +191,13 @@ sheet.addEventListener('click', e => { if (e.target === sheet) sheet.close(); })
 /* ================= rendering ================= */
 const TITLES = { library: 'Your library', favs: 'Favourites', lists: 'Playlists', recent: 'Recently played' };
 
+function looksHtml() {
+  const fig = w => `<figure><button class="ph ${w.id === wallpaper ? 'sel' : ''}" data-act="wp" data-id="${w.id}" type="button" aria-label="Use ${esc(w.name)}"><img src="${wpUrl(w)}" alt="${esc(w.name)} wallpaper" loading="lazy">${w.live ? '<span class="live">LIVE</span>' : ''}<span class="tick">${ico('check')}</span></button><figcaption>${esc(w.name)}</figcaption></figure>`;
+  return `<div class="head"><h2>Looks</h2><div class="actions"><button class="btn" data-act="theme" type="button">${ico('theme')} ${{ auto: 'Auto', light: 'Light', dark: 'Dark' }[theme]}</button></div></div>
+    <p class="lead">Pick a wallpaper for the whole app. The live ones move. Songs without cover art borrow a wallpaper as their cover.</p>
+    <div class="lgrid"><h2>Still</h2>${WALLPAPERS.filter(w => !w.live).map(fig).join('')}<h2>Live</h2>${WALLPAPERS.filter(w => w.live).map(fig).join('')}</div>`;
+}
+
 function render() {
   const main = $('#main');
   const q = $('#q').value.trim().toLowerCase();
@@ -174,6 +208,9 @@ function render() {
     const list = songs.filter(s => `${s.title} ${s.artist} ${s.album}`.toLowerCase().includes(q));
     shown = list.map(s => s.id);
     html = head(`Results`, `${list.length} found`) + (list.length ? list.map(rowHtml).join('') : emptyHtml('No matches', 'Try a different word.', false));
+  } else if (view === 'looks') {
+    shown = [];
+    html = looksHtml();
   } else if (view === 'lists' && openList === null) {
     html = head('Playlists', `${lists.length}`) + `<div class="grid">${lists.map(plCard).join('')}<button class="pl new" data-act="newlist" type="button">＋ New playlist</button></div>`;
     shown = [];
@@ -190,7 +227,7 @@ function render() {
     else if (view === 'recent') list = list.filter(s => s.last).sort((a, b) => b.last - a.last).slice(0, 60);
     else list.sort(byTitle);
     shown = list.map(s => s.id);
-    if (!songs.length) html = emptyHtml('Hi, I’m Needle!', 'Add songs from your phone and I’ll keep them here — private, offline, no ads.', true);
+    if (!songs.length) html = emptyHtml('Hi, I’m Drift!', 'Add songs from your phone and I’ll keep them here — private, offline, no ads.', true);
     else html = head(TITLES[view], `${list.length} songs`) + playBar(list.length)
       + (list.length ? list.map(rowHtml).join('') : emptyHtml(view === 'favs' ? 'No favourites yet' : 'Nothing played yet', view === 'favs' ? 'Tap the heart on any song.' : 'Play a song and it shows up here.', false));
   }
@@ -213,7 +250,7 @@ function rowHtml(s) {
 function plCard(l) {
   const first = l.songIds.map(byId).find(Boolean);
   const u = first && coverUrl(first);
-  return `<button class="pl" data-act="openlist" data-id="${l.id}" type="button"><div class="art" style="--h:${hue(l.name)}">${u ? `<img src="${u}" alt="">` : esc(l.name.charAt(0).toUpperCase())}</div><div><b>${esc(l.name)}</b><br><small>${l.songIds.filter(id => byId(id)).length} songs</small></div></button>`;
+  return `<button class="pl" data-act="openlist" data-id="${l.id}" type="button"><div class="art" style="background-image:url(${wpUrl(wpFor(l.name))})">${u ? `<img src="${u}" alt="">` : esc(l.name.charAt(0).toUpperCase())}</div><div><b>${esc(l.name)}</b><br><small>${l.songIds.filter(id => byId(id)).length} songs</small></div></button>`;
 }
 
 /* ================= list interactions ================= */
@@ -226,6 +263,8 @@ $('#main').addEventListener('click', e => {
   if (act === 'add') return $('#file').click();
   if (act === 'playall') return playIds(shown, shown[0], false);
   if (act === 'shuffleall') return playIds(shown, shown[Math.floor(Math.random() * shown.length)], true);
+  if (act === 'wp') { wallpaper = actEl.dataset.id; store.set('wallpaper', wallpaper); applyLook(); updatePlayerUI(); return render(); }
+  if (act === 'theme') { theme = { auto: 'light', light: 'dark', dark: 'auto' }[theme]; store.set('theme', theme); applyLook(); return render(); }
   if (act === 'newlist') return newPlaylist();
   if (act === 'openlist') { openList = +actEl.dataset.id; return render(); }
   if (act === 'back') { openList = null; return render(); }
@@ -474,13 +513,13 @@ function updatePlayerUI() {
   $('#fullMore').innerHTML = ico('more');
   $('#full').classList.toggle('playing', playing);
   if (!s) return;
-  const h = hue(s.title + s.artist);
+  const w = wpUrl(wpFor(s.title + s.artist));
   $('#miniCov').innerHTML = thumb(s);
   $('#miniTitle').textContent = s.title;
   $('#miniArtist').textContent = s.artist || 'Unknown artist';
   $('#fullCov').innerHTML = coverUrl(s) ? `<img src="${coverUrl(s)}" alt="">` : esc((s.title || '?').charAt(0).toUpperCase());
-  $('#fullCov').style.setProperty('--h', h);
-  $('#full').style.setProperty('--glow', `hsl(${h} 45% 24%)`);
+  $('#fullCov').style.backgroundImage = coverUrl(s) ? 'none' : `url(${w})`;
+  $('#full').style.setProperty('--fwp', coverUrl(s) ? `url(${coverUrl(s)})` : `url(${w})`);
   $('#fullTitle').textContent = s.title;
   $('#fullArtist').textContent = s.artist || 'Unknown artist';
   $('#fullFav').innerHTML = ico('heart', s.fav ? 'fill' : '');
@@ -560,9 +599,10 @@ document.addEventListener('keydown', e => {
 
 /* ================= boot ================= */
 function drawTabIcons() {
-  document.querySelectorAll('#tabs button').forEach(b => { b.firstElementChild.innerHTML = ico({ library: 'library', favs: 'heart', lists: 'lists', recent: 'recent' }[b.dataset.view]); });
+  document.querySelectorAll('#tabs button').forEach(b => { b.firstElementChild.innerHTML = ico({ library: 'library', favs: 'heart', lists: 'lists', recent: 'recent', looks: 'looks' }[b.dataset.view]); });
 }
 (async function boot() {
+  applyLook();
   drawTabIcons();
   updatePlayerUI();
   try {
