@@ -23,17 +23,19 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div class="hint">Drag or move your finger over her. She follows, breathes, blinks and her hair moves.</div>
+<div class="hint">Drag your finger over her. She follows it, blinks, breathes and talks.</div>
 <div class="bar">
   <div class="row">
     <button class="btn" id="auto" aria-pressed="false">Auto mood</button>
     <button class="btn" id="talk" aria-pressed="false">Talking</button>
+    <button class="btn" id="say">Say hi</button>
     <button class="btn" id="blinkNow">Blink</button>
   </div>
   <div class="strip" id="strip"></div>
 </div>
 <script>
 const POSES = /*POSES*/[];
+const FEATS = /*FEATS*/[];
 
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl', { antialias:true, premultipliedAlpha:false });
@@ -44,7 +46,9 @@ void main(){ vec2 q = p*0.5+0.5; v = vec2(q.x*uvS.x + uvO.x, (1.0-q.y)*uvS.y + u
 const FS = `precision highp float;
 varying vec2 v;
 uniform sampler2D A, B;
-uniform float mixv, t, blink, tx, ty, talk;
+uniform float mixv, t, blink, tx, ty, talk, mouth;
+uniform vec4 EA0, SA0, EA1, SA1, MA, NA;   // pose A: eye geometry+style (x2), mouth geometry+style
+uniform vec4 EB0, SB0, EB1, SB1, MB, NB;   // pose B
 
 vec3 hsv(vec3 c){
   vec4 K = vec4(0.,-1./3.,2./3.,-1.);
@@ -57,11 +61,22 @@ float hairness(vec3 c){
   vec3 h = hsv(c);
   return smoothstep(.50,.62,h.y) * smoothstep(.40,.55,h.z) * step(.02,h.x) * step(h.x,.12);
 }
-float irisness(vec3 c){
-  vec3 h = hsv(c);
-  return smoothstep(.09,.14,h.y) * smoothstep(.30,.38,h.z) * step(.20,h.x) * step(h.x,.42);
+vec3 eyeLid(vec3 col, vec2 p, vec4 e, vec4 s, float b){
+  if (e.z <= 0. || b < .01) return col;
+  vec2 d = p - e.xy; float ca = cos(s.x), sa = sin(s.x);
+  float u = (d.x*ca + d.y*sa) / e.z, w = (-d.x*sa + d.y*ca) / e.w;
+  float r = sqrt(u*u + w*w);
+  float inside = 1. - smoothstep(.98, 1.18, r);
+  float arch = .30*(1.-u*u)*b;
+  float wt = mix(-1.25, .04, b) + arch;
+  float wb = mix(1.25, .04, b) + arch;
+  float cover = max(1. - smoothstep(wt-.06, wt+.06, w), smoothstep(wb-.06, wb+.06, w)) * inside;
+  col = mix(col, s.yzw, cover);
+  float th = .11*(.6 + .4*(1.-u*u));
+  float line = exp(-pow((w - wt)/th, 2.)) * smoothstep(.08,.30,b) * inside * (1. - smoothstep(.9,1.12,abs(u)));
+  return mix(col, vec3(.09,.05,.06), clamp(line*.9,0.,1.));
 }
-vec4 live(sampler2D T, vec2 p){
+vec4 live(sampler2D T, vec2 p, vec4 e0, vec4 s0, vec4 e1, vec4 s1, vec4 mg, vec4 ms){
   // breathing about the bottom centre
   float br = sin(t*1.5)*.5+.5;
   p = (p - vec2(.5,1.)) / (1. + .010*br + .006*talk*sin(t*9.)) + vec2(.5,1.);
@@ -80,17 +95,26 @@ vec4 live(sampler2D T, vec2 p){
                 .45*sin(t*1.1 + p.x*6.)) * .0048 * w;
   d.x += tx * .010 * w;
   p += d;
+  // mouth: the lower lip slides down and the gap shows the inside of her mouth
+  float gapM = 0.; float opened = 0.; float uu = 0.; float ww = 0.;
+  if (ms.y > .5 && mouth > .004) {
+    vec2 d0 = p - mg.xy; float ca = cos(ms.x), sa = sin(ms.x);
+    uu = (d0.x*ca + d0.y*sa) / mg.z; ww = (-d0.x*sa + d0.y*ca) / mg.w;
+    float k = (1. - smoothstep(.7,1.5,abs(uu))) * (1. - smoothstep(1.4,3.6,ww)) * smoothstep(-3.,-1.4,ww);
+    float shv = mouth*1.0*k, upv = mouth*.22*k;
+    float ws = ww;
+    if (ww > shv) ws = ww - shv; else if (ww < -upv) ws = ww + upv; else ws = 0.;
+    if (shv + upv > .05 && ww <= shv && ww >= -upv) { gapM = 1. - smoothstep(.72,1.0,abs(uu)); opened = (ww+upv)/(shv+upv); }
+    p = mg.xy + vec2(uu*mg.z*ca - ws*mg.w*sa, uu*mg.z*sa + ws*mg.w*ca);
+  }
   vec4 col = texture2D(T,p);
-  // blink: cover the iris with skin sampled just above it
-  float ir = (irisness(col.rgb)
-            + irisness(texture2D(T,p+vec2(.004,0)).rgb) + irisness(texture2D(T,p-vec2(.004,0)).rgb)
-            + irisness(texture2D(T,p+vec2(0,.004)).rgb) + irisness(texture2D(T,p-vec2(0,.004)).rgb)) / 5.;
-  vec4 lid = texture2D(T, p + vec2(0.,-.018));
-  col = mix(col, lid, clamp(ir*2.,0.,1.) * blink * smoothstep(.62,.5,p.y));
+  col.rgb = mix(col.rgb, mix(vec3(.08,.025,.04), vec3(.36,.10,.15), smoothstep(.35,1.,opened)*.7*mouth), gapM);
+  col.rgb = eyeLid(col.rgb, p, e0, s0, blink);
+  col.rgb = eyeLid(col.rgb, p, e1, s1, blink);
   return col;
 }
 void main(){
-  vec4 c = mix(live(A,v), live(B,v), mixv);
+  vec4 c = mix(live(A,v,EA0,SA0,EA1,SA1,MA,NA), live(B,v,EB0,SB0,EB1,SB1,MB,NB), mixv);
   float edge = smoothstep(1.0, 0.88, v.y) * smoothstep(0.0, 0.03, v.x) * smoothstep(1.0, 0.97, v.x);          // fade the bottom of the picture into the background
   gl_FragColor = vec4(mix(vec3(.051,.043,.071), c.rgb, edge), 1.);
 }`;
@@ -104,7 +128,8 @@ const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
 const loc = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
 const U = n => gl.getUniformLocation(prog, n);
-const u = { uvS:U('uvS'), uvO:U('uvO'), A:U('A'), B:U('B'), mixv:U('mixv'), t:U('t'), blink:U('blink'), tx:U('tx'), ty:U('ty'), talk:U('talk') };
+const feat = {}; ['EA0','SA0','EA1','SA1','MA','NA','EB0','SB0','EB1','SB1','MB','NB'].forEach(n => feat[n] = U(n));
+const u = { mouth:U('mouth'), uvS:U('uvS'), uvO:U('uvO'), A:U('A'), B:U('B'), mixv:U('mixv'), t:U('t'), blink:U('blink'), tx:U('tx'), ty:U('ty'), talk:U('talk') };
 
 const tex = [];
 function load(i){
@@ -138,12 +163,36 @@ POSES.forEach((src,i) => {
   strip.appendChild(im);
 });
 
+// per-pose eye / mouth data -> shader uniforms
+const PX = 896, rad = d => d*Math.PI/180;
+function featUniforms(i, side){
+  const f = FEATS[i] || {eyes:[], lips:null};
+  [0,1].forEach(k => {
+    const e = f.eyes[k];
+    gl.uniform4f(feat['E'+side+k], e ? e.c[0]/PX : 0, e ? e.c[1]/PX : 0, e ? e.rx/PX : 0, e ? e.ry/PX : 0);
+    gl.uniform4f(feat['S'+side+k], e ? rad(e.ang) : 0, e ? e.skin[0]/255 : 0, e ? e.skin[1]/255 : 0, e ? e.skin[2]/255 : 0);
+  });
+  const l = f.lips;
+  gl.uniform4f(feat['M'+side], l ? l.c[0]/PX : 0, l ? l.c[1]/PX : 0, l ? l.rx/PX : 0, l ? l.ry/PX : 0);
+  gl.uniform4f(feat['N'+side], l ? rad(l.ang) : 0, l ? 1 : 0, 0, 0);
+}
+
 // state
-let tx = 0, ty = 0, gx = 0, gy = 0, blinkT = -1, nextBlink = 2, talk = 0, talkOn = false, autoOn = false, autoAt = 6;
+let tx = 0, ty = 0, gx = 0, gy = 0, blinkT = -1, nextBlink = 2, talk = 0, talkOn = false, autoOn = false, autoAt = 6, mouthAmt = 0, pointerOn = false, again = false;
 const autoBtn = document.getElementById('auto'), talkBtn = document.getElementById('talk');
 autoBtn.onclick = () => { autoOn = !autoOn; autoBtn.setAttribute('aria-pressed', autoOn); autoAt = 0; };
 talkBtn.onclick = () => { talkOn = !talkOn; talkBtn.setAttribute('aria-pressed', talkOn); };
 document.getElementById('blinkNow').onclick = () => { blinkT = 0; };
+function setTalk(on){ talkOn = on; talkBtn.setAttribute('aria-pressed', on); }
+document.getElementById('say').onclick = () => {
+  let done = false; const stop = () => { if (!done) { done = true; setTalk(false); } };
+  setTalk(true); setTimeout(stop, 9000);
+  try {
+    if (!('speechSynthesis' in window)) throw new Error('no speech');
+    const m = new SpeechSynthesisUtterance("Hi. I'm here. What are we doing today?");
+    m.onend = stop; m.onerror = stop; speechSynthesis.cancel(); speechSynthesis.speak(m);
+  } catch (e) { setTimeout(stop, 2600); }
+};
 window.__force = o => Object.assign(window, o);
 
 function aim(e){
@@ -151,9 +200,9 @@ function aim(e){
   const y = (e.touches ? e.touches[0].clientY : e.clientY) / innerHeight;
   gx = (x - .5) * 2; gy = (y - .5) * 2;
 }
-addEventListener('pointermove', aim); addEventListener('pointerdown', aim);
-addEventListener('pointerleave', () => { gx = 0; gy = 0; });
-addEventListener('pointerup', () => { gx = 0; gy = 0; });
+addEventListener('pointermove', e => { pointerOn = true; aim(e); }); addEventListener('pointerdown', e => { pointerOn = true; aim(e); });
+addEventListener('pointerleave', () => { pointerOn = false; });
+addEventListener('pointerup', () => { pointerOn = false; });
 
 function resize(){
   const d = Math.min(devicePixelRatio || 1, 2);
@@ -175,13 +224,23 @@ async function boot(){
 }
 function frame(now){
   const dt = Math.min((now-last)/1000, .1); last = now; const t = (now-T0)/1000;
-  tx += (gx - tx) * (1 - Math.exp(-dt*5)); ty += (gy - ty) * (1 - Math.exp(-dt*5));
-  // blink
+  const tgx = pointerOn ? gx : .26*Math.sin(t*.37) + .08*Math.sin(t*.91), tgy = pointerOn ? gy : .12*Math.sin(t*.29 + 1);
+  tx += (tgx - tx) * (1 - Math.exp(-dt*5)); ty += (tgy - ty) * (1 - Math.exp(-dt*5));
+  // blink: lid closes fast, opens a little slower, sometimes twice
   nextBlink -= dt;
-  if (blinkT < 0 && nextBlink <= 0) { blinkT = 0; nextBlink = 2.2 + Math.random()*4; }
+  if (blinkT < 0 && nextBlink <= 0) { blinkT = 0; again = Math.random() < .15; nextBlink = 2.2 + Math.random()*4; }
   let bl = 0;
-  if (blinkT >= 0) { blinkT += dt; bl = Math.sin(Math.min(blinkT/.18,1)*Math.PI); if (blinkT > .18) blinkT = -1; }
+  if (blinkT >= 0) {
+    blinkT += dt; const B = blinkT;
+    bl = B < .07 ? B/.07 : B < .10 ? 1 : 1 - (B-.10)/.14;
+    bl = Math.max(0, Math.min(1, bl)); bl = bl*bl*(3-2*bl);
+    if (B > .24) { blinkT = -1; if (again) { again = false; nextBlink = .12; } }
+  }
   if (window.__blink != null) bl = window.__blink;
+  // mouth: syllable-like opening while talking
+  const syll = Math.abs(Math.sin(t*8.5 + 1.7*Math.sin(t*2.3))), pause = Math.min(1, Math.max(0, 1.6*Math.sin(t*1.1) + .9));
+  const mt = talkOn ? Math.pow(syll, .8)*pause*.9 : 0;
+  mouthAmt += (mt - mouthAmt) * (1 - Math.exp(-dt*18));
   talk += ((talkOn ? 1 : 0) - talk) * (1 - Math.exp(-dt*6));
   // fade
   if (fading) { mixv += dt/.55; if (mixv >= 1) { mixv = 1; cur = nxt; fading = false; } }
@@ -191,6 +250,7 @@ function frame(now){
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tB); gl.uniform1i(u.B, 1);
   gl.uniform1f(u.mixv, fading ? mixv : 0);
   gl.uniform1f(u.t, window.__t != null ? window.__t : t); gl.uniform1f(u.blink, bl);
+  featUniforms(cur,'A'); featUniforms(fading ? nxt : cur,'B'); gl.uniform1f(u.mouth, window.__mouth != null ? window.__mouth : mouthAmt);
   gl.uniform1f(u.tx, window.__tx != null ? window.__tx : tx); gl.uniform1f(u.ty, ty); gl.uniform1f(u.talk, talk);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   requestAnimationFrame(frame);
