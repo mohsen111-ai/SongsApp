@@ -199,7 +199,7 @@ function moodArt(letter, moodKey, asData) {
   else if (moodKey === 'energetic') for (let i = 0; i < 5; i++) { x.strokeStyle = c[i % 3]; x.lineWidth = 6; x.beginPath(); x.arc(S / 2, S / 2, 120 + i * 42, 0, 6.3); x.stroke(); }
   else for (let i = 0; i < 9; i++) { x.strokeStyle = c[0]; x.lineWidth = 2; x.beginPath(); x.arc(S / 2, S / 2, 130 + i * 18, 0, 6.3); x.stroke(); }
   x.globalAlpha = 1; x.fillStyle = '#fff'; x.shadowColor = 'rgba(0,0,0,.5)'; x.shadowBlur = 24;
-  x.font = '800 230px "Syne", system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(letter || '♪').toUpperCase(), S / 2, S / 2 + 10);
+  x.font = '800 230px "Syne", system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(letter || '♪'), S / 2, S / 2 + 10);
   x.shadowBlur = 0; x.font = '700 30px system-ui, sans-serif'; x.fillStyle = c[2]; x.fillText(m.name.toUpperCase(), S / 2, S - 44);
   if (asData) return Promise.resolve(cv.toDataURL('image/png'));
   return new Promise(res => cv.toBlob(b => res(b ? URL.createObjectURL(b) : null), 'image/png'));

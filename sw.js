@@ -1,6 +1,6 @@
 // Caches the app shell so Drift opens offline. Songs live in IndexedDB, not here.
 const CACHE = 'songsapp-shell-v4';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'moods.js', 'manifest.webmanifest', 'icons/mascot.svg', 'wallpapers/night-tide.svg', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'moods.js', 'art.js', 'manifest.webmanifest', 'icons/mascot.svg', 'wallpapers/night-tide.svg', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -154,9 +154,16 @@ const byId = id => songs.find(s => s.id === id);
 const cur = () => byId(queue[qi]);
 const isPlaying = () => !audio.paused && !audio.ended;
 
+const artSeedOf = s => s.artSeed || (s.artSeed = `${s.title}|${s.artist}|${s.fileName || s.id}`);
+function resetCoverUrl(id) { if (coverUrls.has(id)) { URL.revokeObjectURL(coverUrls.get(id)); coverUrls.delete(id); } }
+async function ensureArt(s, force) {
+  if (s.cover || (s.art && !force)) return false;
+  try { s.art = await makeSongArt(artSeedOf(s), s.mood || null); resetCoverUrl(s.id); await DB.put('songs', s); return true; } catch { return false; }
+}
 function coverUrl(s) {
-  if (!s || !s.cover) return null;
-  if (!coverUrls.has(s.id)) coverUrls.set(s.id, URL.createObjectURL(s.cover));
+  const blob = s && (s.cover || s.art);
+  if (!blob) return null;
+  if (!coverUrls.has(s.id)) coverUrls.set(s.id, URL.createObjectURL(blob));
   return coverUrls.get(s.id);
 }
 const bdCache = new Map();
@@ -180,7 +187,7 @@ function setBackdrop(src) {
 function thumb(s, cls = 'cov') {
   const u = coverUrl(s);
   return u ? `<img class="${cls}" src="${u}" alt="" loading="lazy">`
-    : `<div class="${cls} art" style="background-image:url(${wpUrl(wpFor(s.title + s.artist))})">${esc((s.title || '?').trim().charAt(0).toUpperCase())}</div>`;
+    : `<div class="${cls} art" style="background-image:url(${wpUrl(wpFor(s.title + s.artist))})"></div>`;
 }
 
 /* ================= look: wallpaper + theme ================= */
@@ -255,11 +262,12 @@ function looksHtml() {
   const fig = w => `<figure><button class="ph ${w.id === wallpaper ? 'sel' : ''}" data-act="wp" data-id="${w.id}" type="button" aria-label="Use ${esc(w.name)}"><img src="${wpUrl(w)}" alt="${esc(w.name)} wallpaper" loading="lazy">${w.live ? '<span class="live">LIVE</span>' : ''}<span class="tick">${ico('check')}</span></button><figcaption>${esc(w.name)}</figcaption></figure>`;
   return `<div class="head"><h2>Looks</h2><div class="actions"><button class="btn" data-act="theme" type="button">${ico('theme')} ${{ auto: 'Auto', light: 'Light', dark: 'Dark' }[theme]}</button></div></div>
     <div class="note"><b>Animations</b><p>Switch to Off or Lite if the app feels slow. Live wallpapers only move on Full.</p><div class="seg">${['off', 'lite', 'full'].map(v => `<button class="${fx === v ? 'on' : ''}" data-act="fx" data-v="${v}" type="button">${{ off: 'Off', lite: 'Lite', full: 'Full' }[v]}</button>`).join('')}</div></div>
-    <p class="lead">Pick a wallpaper for the whole app. The live ones move. Songs without cover art borrow a wallpaper as their cover.</p>
+    <p class="lead">Pick a wallpaper for the whole app. The live ones move. Every song without cover art gets its own artwork, drawn just for it.</p>
     ${isNative ? `<div class="note"><b>Music stops when you leave the app?</b><p>Allow Drift to run in the background. On Xiaomi / Redmi / POCO also open Settings → Apps → Drift → Battery saver → No restrictions, and turn Autostart on.</p><button class="btn main" data-act="battery" type="button">Allow background playing</button></div>` : ''}
     <div class="lgrid"><h2>Still</h2>${WALLPAPERS.filter(w => !w.live).map(fig).join('')}<h2>Live</h2>${WALLPAPERS.filter(w => w.live).map(fig).join('')}</div>`;
 }
 
+const navStack = []; // where you came from (tabs / playlist), for the Back button
 let lastKey = '';
 function render() {
   const main = $('#main');
@@ -316,7 +324,7 @@ function rowHtml(s) {
 function plCard(l) {
   const first = l.songIds.map(byId).find(Boolean);
   const u = first && coverUrl(first);
-  return `<button class="pl" data-act="openlist" data-id="${l.id}" type="button"><div class="art" style="background-image:url(${wpUrl(wpFor(l.name))})">${u ? `<img src="${u}" alt="">` : esc(l.name.charAt(0).toUpperCase())}</div><div><b>${esc(l.name)}</b><br><small>${l.songIds.filter(id => byId(id)).length} songs</small></div></button>`;
+  return `<button class="pl" data-act="openlist" data-id="${l.id}" type="button"><div class="art" style="background-image:url(${wpUrl(wpFor(l.name))})">${u ? `<img src="${u}" alt="">` : ''}</div><div><b>${esc(l.name)}</b><br><small>${l.songIds.filter(id => byId(id)).length} songs</small></div></button>`;
 }
 
 /* ================= list interactions ================= */
@@ -334,8 +342,8 @@ $('#main').addEventListener('click', e => {
   if (act === 'theme') { theme = { auto: 'light', light: 'dark', dark: 'auto' }[theme]; store.set('theme', theme); applyLook(); return render(); }
   if (act === 'battery' && BG) { BG.requestBatteryExemption().then(r => toast(r && r.granted ? 'Already allowed' : 'Choose “Allow” in the box')).catch(() => {}); return; }
   if (act === 'newlist') return newPlaylist();
-  if (act === 'openlist') { openList = +actEl.dataset.id; return render(); }
-  if (act === 'back') { openList = null; return render(); }
+  if (act === 'openlist') { navStack.push({ view, openList }); openList = +actEl.dataset.id; return render(); }
+  if (act === 'back') { goBack(); return; }
   if (act === 'plmenu') return playlistMenu();
   if (rowEl) playIds(shown, +rowEl.dataset.id, shuffle);
 });
@@ -343,6 +351,7 @@ $('#main').addEventListener('click', e => {
 $('#tabs').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
+  if (b.dataset.view !== view || openList !== null) { navStack.push({ view, openList }); if (navStack.length > 30) navStack.shift(); }
   view = b.dataset.view;
   openList = null;
   $('#q').value = '';
@@ -477,6 +486,7 @@ $('#file').addEventListener('change', async e => {
     }
     const gm = moodFromGenre(tags.genre);
     const song = { title, artist: artist || '', album: tags.album || '', genre: tags.genre || '', mood: gm || '', moodSource: gm ? 'genre' : '', cover: tags.cover || null, blob: f, fileName: f.name, size: f.size, mime: f.type, fav: false, added: Date.now() + i, last: 0, plays: 0 };
+    if (!song.cover) song.art = await makeSongArt(artSeedOf(song), song.mood || null);
     song.id = await DB.put('songs', song);
     songs.push(song);
     added++;
@@ -596,7 +606,7 @@ function updatePlayerUI() {
   $('#miniCov').innerHTML = thumb(s);
   $('#miniTitle').textContent = s.title;
   $('#miniArtist').textContent = s.artist || 'Unknown artist';
-  $('#fullCov').innerHTML = coverUrl(s) ? `<img src="${coverUrl(s)}" alt="">` : esc((s.title || '?').charAt(0).toUpperCase());
+  $('#fullCov').innerHTML = coverUrl(s) ? `<img src="${coverUrl(s)}" alt="">` : '';
   $('#fullCov').style.backgroundImage = coverUrl(s) ? 'none' : `url(${w})`;
   setBackdrop(coverUrl(s) || w);
   $('#fullTitle').textContent = s.title;
@@ -653,8 +663,26 @@ seekEl.addEventListener('change', () => {
   seeking = false;
 });
 
-function openFull() { const f = $('#full'); if (!f.classList.contains('open')) { try { history.pushState({ full: 1 }, ''); } catch { /* ignore */ } } f.classList.add('open'); f.setAttribute('aria-hidden', 'false'); viz.resize(); updatePlayerUI(); }
-function closeFull() { if (history.state && history.state.full) { history.back(); return; } hideFull(); }
+function openFull() { const f = $('#full'); if (!isNative && !f.classList.contains('open')) { try { history.pushState({ full: 1 }, ''); } catch { /* ignore */ } } f.classList.add('open'); f.setAttribute('aria-hidden', 'false'); viz.resize(); updatePlayerUI(); }
+function closeFull() { if (!isNative && history.state && history.state.full) { history.back(); return; } hideFull(); }
+
+/* Back button / back gesture. Returns true if it handled the press; false means "nothing left to go back to". */
+function goBack() {
+  const openDlg = document.querySelector('dialog[open]');
+  if (openDlg) { openDlg.close(); return true; }
+  if ($('#full').classList.contains('open')) { hideFull(); return true; }
+  if ($('#q').value.trim()) { $('#q').value = ''; render(); return true; }
+  if (navStack.length) {
+    const prev = navStack.pop();
+    view = prev.view; openList = prev.openList;
+    store.set('view', view);
+    render();
+    return true;
+  }
+  if (view !== 'library' || openList !== null) { view = 'library'; openList = null; store.set('view', view); render(); return true; }
+  return false;
+}
+window.driftBack = goBack;
 function hideFull() { const f = $('#full'); f.classList.remove('open'); f.setAttribute('aria-hidden', 'true'); viz.stop(); }
 window.addEventListener('popstate', () => hideFull());
 
@@ -691,11 +719,12 @@ async function setMediaSession(s) {
   const base = { title: s.title, artist: s.artist || 'Unknown artist', album: s.album || 'Drift' };
   const u = coverUrl(s);
   if (u) {
-    const src = isNative ? await blobToDataUrl(s.cover) : u;
-    await ms.metadata({ ...base, artwork: src ? [{ src, sizes: '512x512', type: s.cover.type || 'image/jpeg' }] : [] });
+    const blob = s.cover || s.art;
+    const src = isNative ? await blobToDataUrl(blob) : u;
+    await ms.metadata({ ...base, artwork: src ? [{ src, sizes: '512x512', type: blob.type || 'image/jpeg' }] : [] });
   } else {
     await ms.metadata({ ...base, artwork: [] });
-    const url = await moodArt((s.title || '?').charAt(0), moodOf(s), isNative);
+    const url = await moodArt('', moodOf(s), isNative);
     if (url && cur() && cur().id === s.id) {
       await ms.metadata({ ...base, artwork: [{ src: url, sizes: '512x512', type: 'image/png' }] });
       if (!isNative) { if (artUrl) URL.revokeObjectURL(artUrl); artUrl = url; }
@@ -746,6 +775,7 @@ function askBatteryOnce() {
 async function setMood(s, key, source) {
   s.mood = key; s.moodSource = source;
   await DB.put('songs', s).catch(() => {});
+  if (!s.cover && key) { await ensureArt(s, true); render(); }
   if (cur() && cur().id === s.id) { viz.setMood(moodOf(s)); setMediaSession(s); }
   updatePlayerUI();
 }
@@ -778,6 +808,7 @@ function drawTabIcons() {
     toast('Storage is unavailable in this browser mode');
   }
   render();
+  (async () => { let n = 0; for (const s of songs) if (await ensureArt(s)) n++; if (n) { render(); updatePlayerUI(); } })();
   if (!window.Capacitor && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
