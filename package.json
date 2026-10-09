@@ -6,7 +6,8 @@
   "scripts": {
     "build:www": "node scripts/build-www.js",
     "android:sync": "npm run build:www && cap sync android",
-    "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug"
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
@@ -15,6 +16,7 @@
     "@jofr/capacitor-media-session": "^4.0.0"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "patch-package": "^8.0.1"
   }
 }

@@ -1,0 +1,96 @@
+diff --git a/node_modules/@jofr/capacitor-media-session/android/src/main/java/io/github/jofr/capacitor/mediasessionplugin/MediaSessionPlugin.java b/node_modules/@jofr/capacitor-media-session/android/src/main/java/io/github/jofr/capacitor/mediasessionplugin/MediaSessionPlugin.java
+index 6f54b7f..34ee342 100644
+--- a/node_modules/@jofr/capacitor-media-session/android/src/main/java/io/github/jofr/capacitor/mediasessionplugin/MediaSessionPlugin.java
++++ b/node_modules/@jofr/capacitor-media-session/android/src/main/java/io/github/jofr/capacitor/mediasessionplugin/MediaSessionPlugin.java
+@@ -81,6 +81,14 @@ public class MediaSessionPlugin extends Plugin {
+         }
+     }
+ 
++    /** Called by the service when the user swipes the (paused) notification away. */
++    public void onNotificationDismissed() {
++        if (service != null) {
++            try { getContext().unbindService(serviceConnection); } catch (RuntimeException ignored) { }
++            service = null;
++        }
++    }
++
+     public void startMediaService() {
+         Intent intent = new Intent(getActivity(), MediaSessionService.class);
+         ContextCompat.startForegroundService(getContext(), intent);
+diff --git a/node_modules/@jofr/capacitor-media-session/android/src/main/java/io/github/jofr/capacitor/mediasessionplugin/MediaSessionService.java b/node_modules/@jofr/capacitor-media-session/android/src/main/java/io/github/jofr/capacitor/mediasessionplugin/MediaSessionService.java
+index cb0417f..f27529f 100644
+--- a/node_modules/@jofr/capacitor-media-session/android/src/main/java/io/github/jofr/capacitor/mediasessionplugin/MediaSessionService.java
++++ b/node_modules/@jofr/capacitor-media-session/android/src/main/java/io/github/jofr/capacitor/mediasessionplugin/MediaSessionService.java
+@@ -55,6 +55,8 @@ public class MediaSessionService extends Service {
+     private boolean playbackStateUpdate = false;
+     private boolean mediaMetadataUpdate = false;
+     private boolean notificationUpdate = false;
++    private boolean foregroundUpdate = false;
++    private static final String ACTION_DISMISS = "io.github.jofr.capacitor.mediasessionplugin.DISMISS";
+ 
+     private MediaSessionPlugin plugin;
+     private MediaSessionCallback callback;
+@@ -106,6 +108,7 @@ public class MediaSessionService extends Service {
+                 .setStyle(notificationStyle)
+                 .setSmallIcon(R.drawable.ic_baseline_volume_up_24)
+                 .setContentIntent(PendingIntent.getActivity(getApplicationContext(), 0, intent, PendingIntent.FLAG_IMMUTABLE))
++                .setDeleteIntent(PendingIntent.getService(this, 1, new Intent(this, MediaSessionService.class).setAction(ACTION_DISMISS), PendingIntent.FLAG_IMMUTABLE))
+                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+ 
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+@@ -151,8 +154,26 @@ public class MediaSessionService extends Service {
+         stopSelf();
+     }
+ 
++    private void startForegroundCompat() {
++        try {
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
++                startForeground(NOTIFICATION_ID, notificationBuilder.build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
++            } else {
++                startForeground(NOTIFICATION_ID, notificationBuilder.build());
++            }
++        } catch (RuntimeException e) {
++            Log.w(TAG, "Could not go back to foreground", e);
++        }
++    }
++
+     @Override
+     public int onStartCommand(Intent intent, int flags, int startId) {
++        if (intent != null && ACTION_DISMISS.equals(intent.getAction())) {
++            // the user swiped the notification away while paused: stop everything, it comes back when playback starts again
++            if (plugin != null) plugin.onNotificationDismissed();
++            destroy();
++            return START_NOT_STICKY;
++        }
+         MediaButtonReceiver.handleIntent(mediaSession, intent);
+         return super.onStartCommand(intent, flags, startId);
+     }
+@@ -162,6 +183,7 @@ public class MediaSessionService extends Service {
+             this.playbackState = playbackState;
+             playbackStateUpdate = true;
+             possibleActionsUpdate = true;
++            foregroundUpdate = true;
+         }
+     }
+ 
+@@ -286,6 +308,20 @@ public class MediaSessionService extends Service {
+             mediaMetadataUpdate = false;
+         }
+ 
++        if (foregroundUpdate && notificationBuilder != null) {
++            foregroundUpdate = false;
++            if (playbackState == PlaybackStateCompat.STATE_PLAYING) {
++                // playing: pinned, so Android keeps the music alive in the background
++                notificationBuilder.setOngoing(true);
++                startForegroundCompat();
++            } else if (playbackState == PlaybackStateCompat.STATE_PAUSED) {
++                // paused: let go of the foreground state so the notification can be swiped away
++                notificationBuilder.setOngoing(false);
++                stopForeground(false);
++            }
++            notificationUpdate = true;
++        }
++
+         if (notificationUpdate && notificationBuilder != null) {
+             notificationBuilder
+                     .setContentTitle(title)
