@@ -36,12 +36,16 @@ function createViz(canvas, getCover) {
   const st = { level: 0, bass: 0, avg: 0.2, lastBeat: 0, beat: false, bright: 0 };
   const stats = { n: 0, level: 0, bright: 0, beats: 0, t0: 0 };
   const api = { onPulse: null };
+  /* quality: lite = smaller canvas, 30 fps, half the particles; full = sharp, 60 fps */
+  const QUALITY = { lite: { scale: 0.6, fps: 30, count: 0.5 }, full: { scale: 1, fps: 60, count: 1 }, off: null };
+  let q = QUALITY.lite, K = 0.5, lastDraw = 0;
 
   function resize() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    const sc = q ? (q.scale >= 1 ? dpr : q.scale) : 1;
     w = canvas.clientWidth; h = canvas.clientHeight;
-    canvas.width = Math.max(1, w * dpr); canvas.height = Math.max(1, h * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.width = Math.max(1, Math.round(w * sc)); canvas.height = Math.max(1, Math.round(h * sc));
+    ctx.setTransform(canvas.width / (w || 1), 0, 0, canvas.height / (h || 1), 0, 0);
   }
 
   /* read the music if the browser lets us listen in; otherwise fake a steady beat */
@@ -99,22 +103,23 @@ function createViz(canvas, getCover) {
 
   const heart = (x, y, s) => { ctx.beginPath(); ctx.moveTo(x, y + s * 0.35); ctx.bezierCurveTo(x - s, y - s * 0.4, x - s * 0.5, y - s, x, y - s * 0.4); ctx.bezierCurveTo(x + s * 0.5, y - s, x + s, y - s * 0.4, x, y + s * 0.35); ctx.fill(); };
   const glow = (cv, col) => {
-    const g = ctx.createRadialGradient(cv.x, cv.y, cv.s * 0.2, cv.x, cv.y, cv.s * (0.95 + st.bass * 0.6));
+    const R = cv.s * (0.95 + st.bass * 0.6);
+    const g = ctx.createRadialGradient(cv.x, cv.y, cv.s * 0.2, cv.x, cv.y, R);
     g.addColorStop(0, col + 'aa'); g.addColorStop(1, col + '00');
-    ctx.globalAlpha = 0.45 + st.bass * 0.4; ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.45 + st.bass * 0.4; ctx.fillStyle = g; ctx.fillRect(cv.x - R, cv.y - R, R * 2, R * 2); ctx.globalAlpha = 1;
   };
   const alive = p => p.y > -60 && p.y < h + 60 && p.x > -60 && p.x < w + 60 && (p.a === undefined || p.a > 0.01);
 
   const MODES = {
     happy(dt, now, cv, c) {
       glow(cv, MOODS.happy.glow);
-      if (parts.length < 140) for (let i = 0; i < (30 + st.level * 160) * dt; i++) parts.push({ x: rand(0, w), y: h + 10, vx: rand(-20, 20), vy: -rand(70, 190), s: rand(4, 9), r: rand(0, 6), vr: rand(-4, 4), c: pick(c), sq: Math.random() < 0.5, ph: rand(0, 6) });
+      if (parts.length < 140) for (let i = 0; i < (30 + st.level * 160) * dt * K; i++) parts.push({ x: rand(0, w), y: h + 10, vx: rand(-20, 20), vy: -rand(70, 190), s: rand(4, 9), r: rand(0, 6), vr: rand(-4, 4), c: pick(c), sq: Math.random() < 0.5, ph: rand(0, 6) });
       if (st.beat) for (let i = 0; i < 16; i++) { const a = rand(0, 6.28), sp = rand(120, 280); parts.push({ x: cv.x, y: cv.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, s: rand(4, 8), r: 0, vr: rand(-6, 6), c: pick(c), sq: Math.random() < 0.5, ph: 0, g: 160 }); }
       for (const p of parts) { p.ph += dt * 3; p.x += (p.vx + Math.sin(p.ph) * 22) * dt; p.y += p.vy * dt; if (p.g) p.vy += p.g * dt; p.r += p.vr * dt; ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.globalAlpha = 0.85; if (p.sq) ctx.fillRect(-p.s, -p.s / 2, p.s * 2, p.s); else { ctx.beginPath(); ctx.arc(0, 0, p.s * 0.7, 0, 6.3); ctx.fill(); } ctx.restore(); }
     },
     sad(dt, now, cv, c) {
       glow(cv, MOODS.sad.glow);
-      for (let i = 0; i < (70 + st.level * 90) * dt; i++) parts.push({ x: rand(-60, w + 60), y: -20, vy: rand(380, 620), len: rand(12, 28), a: rand(0.25, 0.6) });
+      for (let i = 0; i < (70 + st.level * 90) * dt * K; i++) parts.push({ x: rand(-60, w + 60), y: -20, vy: rand(380, 620), len: rand(12, 28), a: rand(0.25, 0.6) });
       for (const p of parts) { if (p.rip) { p.r += 40 * dt; p.a -= dt * 0.7; ctx.strokeStyle = c[1]; ctx.globalAlpha = Math.max(0, p.a); ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r, p.r * 0.28, 0, 0, 6.3); ctx.stroke(); continue; } p.y += p.vy * dt; p.x -= p.vy * dt * 0.12; ctx.strokeStyle = c[0]; ctx.globalAlpha = p.a; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.len * 0.12, p.y - p.len); ctx.stroke(); if (p.y > h * 0.86 && !p.done) { p.done = true; p.a = 0; if (Math.random() < 0.35) parts.push({ rip: true, x: p.x, y: p.y, r: 2, a: 0.5 }); } }
       parts = parts.filter(p => p.rip ? p.a > 0 : (p.a > 0 && p.y < h + 40));
       if (st.beat) rings.push({ r: cv.s * 0.55, a: 0.45, v: 90 });
@@ -123,7 +128,7 @@ function createViz(canvas, getCover) {
     },
     romantic(dt, now, cv, c) {
       glow(cv, MOODS.romantic.glow);
-      if (parts.length < 60) for (let i = 0; i < (5 + st.level * 12) * dt; i++) parts.push({ x: rand(0, w), y: h + 30, vy: -rand(35, 85), s: rand(9, 24), ph: rand(0, 6), a: rand(0.4, 0.85), c: pick(c) });
+      if (parts.length < 60) for (let i = 0; i < (5 + st.level * 12) * dt * K; i++) parts.push({ x: rand(0, w), y: h + 30, vy: -rand(35, 85), s: rand(9, 24), ph: rand(0, 6), a: rand(0.4, 0.85), c: pick(c) });
       if (st.beat) for (let i = 0; i < 3; i++) parts.push({ x: cv.x + rand(-cv.s * 0.6, cv.s * 0.6), y: cv.y + cv.s * 0.5, vy: -rand(80, 140), s: rand(18, 34), ph: rand(0, 6), a: 0.9, c: pick(c) });
       for (const p of parts) { p.ph += dt * 1.6; p.y += p.vy * dt; p.x += Math.sin(p.ph) * 18 * dt; p.a -= dt * 0.05; ctx.globalAlpha = Math.max(0, p.a); ctx.fillStyle = p.c; heart(p.x, p.y, p.s); }
       parts = parts.filter(alive);
@@ -131,8 +136,8 @@ function createViz(canvas, getCover) {
     chill(dt, now, cv, c) {
       glow(cv, MOODS.chill.glow);
       const amp = 16 + st.level * 70;
-      [0, 1, 2].forEach(i => { ctx.beginPath(); ctx.moveTo(0, h); for (let x = 0; x <= w; x += 12) ctx.lineTo(x, h * (0.8 + i * 0.045) + Math.sin(x * 0.012 + now / (1400 - i * 260) + i) * amp * (1 - i * 0.25)); ctx.lineTo(w, h); ctx.closePath(); ctx.globalAlpha = 0.2 - i * 0.05; ctx.fillStyle = c[i]; ctx.fill(); });
-      if (parts.length < 24) for (let i = 0; i < 2.5 * dt; i++) parts.push({ x: rand(0, w), y: h + 10, vy: -rand(25, 60), s: rand(3, 11), ph: rand(0, 6), a: rand(0.25, 0.55) });
+      [0, 1, 2].forEach(i => { ctx.beginPath(); ctx.moveTo(0, h); for (let x = 0; x <= w; x += (q && q.scale < 1 ? 24 : 12)) ctx.lineTo(x, h * (0.8 + i * 0.045) + Math.sin(x * 0.012 + now / (1400 - i * 260) + i) * amp * (1 - i * 0.25)); ctx.lineTo(w, h); ctx.closePath(); ctx.globalAlpha = 0.2 - i * 0.05; ctx.fillStyle = c[i]; ctx.fill(); });
+      if (parts.length < 24) for (let i = 0; i < 2.5 * dt * K; i++) parts.push({ x: rand(0, w), y: h + 10, vy: -rand(25, 60), s: rand(3, 11), ph: rand(0, 6), a: rand(0.25, 0.55) });
       for (const p of parts) { p.ph += dt; p.y += p.vy * dt; p.x += Math.sin(p.ph) * 12 * dt; p.a -= dt * 0.03; ctx.globalAlpha = Math.max(0, p.a); ctx.strokeStyle = c[2]; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 6.3); ctx.stroke(); }
       parts = parts.filter(alive);
     },
@@ -153,12 +158,14 @@ function createViz(canvas, getCover) {
       for (let i = 0; i < 6; i++) { ctx.globalAlpha = 0.07 + 0.05 * st.bass; ctx.beginPath(); ctx.arc(cv.x, cv.y, cv.s * (0.62 + i * 0.06), 0, 6.3); ctx.stroke(); }
       ctx.globalAlpha = 0.25; ctx.lineWidth = 2; const a0 = now / 2600;
       for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(cv.x, cv.y, cv.s * 0.68, a0 + k * 1.57, a0 + k * 1.57 + 0.3); ctx.stroke(); }
-      ctx.globalAlpha = 0.05 + 0.03 * Math.sin(now / 90); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
     }
   };
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
+    if (document.hidden || !q) return;
+    if (now - lastDraw < 1000 / q.fps - 3) return;
+    lastDraw = now;
     const dt = Math.min(0.05, (now - last) / 1000 || 0.016); last = now;
     sample(now);
     ctx.clearRect(0, 0, w, h);
@@ -168,8 +175,9 @@ function createViz(canvas, getCover) {
     ctx.globalAlpha = 1;
     if (api.onPulse) api.onPulse(reduce ? 0 : st.bass);
   }
-  api.start = () => { if (raf) return; resize(); last = performance.now(); if (reduce) { sample(last); ctx.clearRect(0, 0, w, h); MODES[mood](0.016, last, getCover(), MOODS[mood].c); return; } raf = requestAnimationFrame(frame); };
-  api.stop = () => { cancelAnimationFrame(raf); raf = 0; if (api.onPulse) api.onPulse(0); };
+  api.setQuality = name => { q = QUALITY[name] || null; K = q ? q.count : 1; parts = []; rings = []; if (raf) { if (q) resize(); else api.stop(); } };
+  api.start = () => { if (raf || !q) return; resize(); last = performance.now(); if (reduce) { sample(last); ctx.clearRect(0, 0, w, h); MODES[mood](0.016, last, getCover(), MOODS[mood].c); return; } raf = requestAnimationFrame(frame); };
+  api.stop = () => { cancelAnimationFrame(raf); raf = 0; if (api.onPulse) api.onPulse(null); };
   api.setMood = k => { mood = MOODS[k] ? k : 'chill'; parts = []; rings = []; };
   api.resize = resize;
   window.addEventListener('resize', () => { if (raf) resize(); });

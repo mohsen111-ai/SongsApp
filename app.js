@@ -44,7 +44,8 @@ const WALLPAPERS = [
   { id: 'aurora-veil', name: 'Aurora Veil', live: true },
   { id: 'starfield-drift', name: 'Starfield Drift', live: true }
 ];
-const wpUrl = w => `wallpapers/${w.id}.svg`;
+const wpUrl = w => `wallpapers/t/${w.id}.jpg`; // small bitmap: cheap to draw in lists and the gallery
+const wpBackdrop = w => (w.live && fx === 'full') ? `wallpapers/${w.id}.svg` : `wallpapers/b/${w.id}.jpg`;
 const wpFor = str => WALLPAPERS[[...String(str)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 997, 7) % WALLPAPERS.length];
 const FILLED = new Set(['play', 'pause', 'more', 'next2']);
 const ico = (n, extra = '') => `<svg class="i ${FILLED.has(n) || extra === 'fill' ? 'fill' : ''}" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
@@ -141,7 +142,12 @@ audio.preload = 'auto';
 const coverUrls = new Map();
 const moodOf = s => (s && s.mood) || 'chill';
 const viz = createViz($('#viz'), () => { const r = $('#fullCov').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, s: r.width / 2 }; });
-viz.onPulse = b => $('#fullCov').style.setProperty('--pulse', (b * 0.045).toFixed(3));
+viz.onPulse = b => {
+  const el = $('#fullCov');
+  if (b == null) { el.style.transform = ''; el.style.transition = ''; return; }
+  el.style.transition = 'none';
+  el.style.transform = `scale(${(1 + b * 0.04).toFixed(3)})`;
+};
 let vizFor = null;
 
 const byId = id => songs.find(s => s.id === id);
@@ -153,6 +159,24 @@ function coverUrl(s) {
   if (!coverUrls.has(s.id)) coverUrls.set(s.id, URL.createObjectURL(s.cover));
   return coverUrls.get(s.id);
 }
+const bdCache = new Map();
+function setBackdrop(src) {
+  const full = $('#full');
+  if (full.dataset.bd === src) return;
+  full.dataset.bd = src;
+  if (bdCache.has(src)) { full.style.setProperty('--fwp', `url(${bdCache.get(src)})`); return; }
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas'); c.width = 24; c.height = 42;
+      c.getContext('2d').drawImage(img, 0, 0, 24, 42);
+      const d = c.toDataURL('image/jpeg', 0.8);
+      bdCache.set(src, d);
+      if (full.dataset.bd === src) full.style.setProperty('--fwp', `url(${d})`);
+    } catch { full.style.setProperty('--fwp', `url(${src})`); }
+  };
+  img.src = src;
+}
 function thumb(s, cls = 'cov') {
   const u = coverUrl(s);
   return u ? `<img class="${cls}" src="${u}" alt="" loading="lazy">`
@@ -160,11 +184,13 @@ function thumb(s, cls = 'cov') {
 }
 
 /* ================= look: wallpaper + theme ================= */
+let fx = store.get('fx', 'lite'); // animations: off | lite | full
 let wallpaper = store.get('wallpaper', 'night-tide');
 let theme = store.get('theme', 'auto'); // auto | light | dark
 function applyLook() {
   const w = WALLPAPERS.find(x => x.id === wallpaper) || WALLPAPERS[0];
-  document.documentElement.style.setProperty('--wp', `url(${wpUrl(w)})`);
+  document.documentElement.style.setProperty('--wp', `url(${wpBackdrop(w)})`);
+  viz.setQuality(fx);
   if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.dataset.theme = theme;
 }
@@ -228,14 +254,19 @@ const TITLES = { library: 'Your library', favs: 'Favourites', lists: 'Playlists'
 function looksHtml() {
   const fig = w => `<figure><button class="ph ${w.id === wallpaper ? 'sel' : ''}" data-act="wp" data-id="${w.id}" type="button" aria-label="Use ${esc(w.name)}"><img src="${wpUrl(w)}" alt="${esc(w.name)} wallpaper" loading="lazy">${w.live ? '<span class="live">LIVE</span>' : ''}<span class="tick">${ico('check')}</span></button><figcaption>${esc(w.name)}</figcaption></figure>`;
   return `<div class="head"><h2>Looks</h2><div class="actions"><button class="btn" data-act="theme" type="button">${ico('theme')} ${{ auto: 'Auto', light: 'Light', dark: 'Dark' }[theme]}</button></div></div>
+    <div class="note"><b>Animations</b><p>Switch to Off or Lite if the app feels slow. Live wallpapers only move on Full.</p><div class="seg">${['off', 'lite', 'full'].map(v => `<button class="${fx === v ? 'on' : ''}" data-act="fx" data-v="${v}" type="button">${{ off: 'Off', lite: 'Lite', full: 'Full' }[v]}</button>`).join('')}</div></div>
     <p class="lead">Pick a wallpaper for the whole app. The live ones move. Songs without cover art borrow a wallpaper as their cover.</p>
     ${isNative ? `<div class="note"><b>Music stops when you leave the app?</b><p>Allow Drift to run in the background. On Xiaomi / Redmi / POCO also open Settings → Apps → Drift → Battery saver → No restrictions, and turn Autostart on.</p><button class="btn main" data-act="battery" type="button">Allow background playing</button></div>` : ''}
     <div class="lgrid"><h2>Still</h2>${WALLPAPERS.filter(w => !w.live).map(fig).join('')}<h2>Live</h2>${WALLPAPERS.filter(w => w.live).map(fig).join('')}</div>`;
 }
 
+let lastKey = '';
 function render() {
   const main = $('#main');
   const q = $('#q').value.trim().toLowerCase();
+  const key = `${view}|${openList}|${q}`;
+  main.classList.toggle('enter', key !== lastKey);
+  lastKey = key;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.view === view && !q));
   let html = '';
 
@@ -298,6 +329,7 @@ $('#main').addEventListener('click', e => {
   if (act === 'add') return $('#file').click();
   if (act === 'playall') return playIds(shown, shown[0], false);
   if (act === 'shuffleall') return playIds(shown, shown[Math.floor(Math.random() * shown.length)], true);
+  if (act === 'fx') { fx = actEl.dataset.v; store.set('fx', fx); applyLook(); updatePlayerUI(); return render(); }
   if (act === 'wp') { wallpaper = actEl.dataset.id; store.set('wallpaper', wallpaper); applyLook(); updatePlayerUI(); return render(); }
   if (act === 'theme') { theme = { auto: 'light', light: 'dark', dark: 'auto' }[theme]; store.set('theme', theme); applyLook(); return render(); }
   if (act === 'battery' && BG) { BG.requestBatteryExemption().then(r => toast(r && r.granted ? 'Already allowed' : 'Choose “Allow” in the box')).catch(() => {}); return; }
@@ -517,8 +549,9 @@ audio.addEventListener('timeupdate', () => {
   const s = cur();
   if (s && !s.mood && !s.moodSource) { const g = viz.guess(); if (g) setMood(s, g, 'audio'); }
 });
-audio.addEventListener('play', () => { askBatteryOnce(); ms.state(true); updatePlayerUI(); render(); });
-audio.addEventListener('pause', () => { ms.state(false); updatePlayerUI(); render(); });
+audio.addEventListener('play', () => { askBatteryOnce(); ms.state(true); updatePlayerUI(); refreshEq(); });
+audio.addEventListener('pause', () => { ms.state(false); updatePlayerUI(); refreshEq(); });
+function refreshEq() { document.querySelectorAll('.eq').forEach(e => e.classList.toggle('paused', !isPlaying())); }
 audio.addEventListener('timeupdate', updateProgress);
 audio.addEventListener('loadedmetadata', updateProgress);
 audio.addEventListener('error', () => { if (queue.length) { toast('Can’t play this file'); if (qi + 1 < queue.length) { qi++; loadCurrent(true); } } });
@@ -565,7 +598,7 @@ function updatePlayerUI() {
   $('#miniArtist').textContent = s.artist || 'Unknown artist';
   $('#fullCov').innerHTML = coverUrl(s) ? `<img src="${coverUrl(s)}" alt="">` : esc((s.title || '?').charAt(0).toUpperCase());
   $('#fullCov').style.backgroundImage = coverUrl(s) ? 'none' : `url(${w})`;
-  $('#full').style.setProperty('--fwp', coverUrl(s) ? `url(${coverUrl(s)})` : `url(${w})`);
+  setBackdrop(coverUrl(s) || w);
   $('#fullTitle').textContent = s.title;
   $('#fullArtist').textContent = s.artist || 'Unknown artist';
   const mk = moodOf(s);
