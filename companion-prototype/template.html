@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Live Prototype</title>
+<style>
+  :root { color-scheme: dark; --bg:#0d0b12; --fg:#ece6f2; --dim:#9a90a8; --accent:#ff8a3d; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; overflow:hidden; }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+  .bar { position:fixed; left:0; right:0; bottom:0; padding:10px 16px calc(12px + env(safe-area-inset-bottom));
+         background:linear-gradient(transparent, rgba(13,11,18,.92) 40%); }
+  .row { display:flex; gap:8px; margin-bottom:10px; }
+  .btn { flex:1; border:1px solid #3a3347; background:rgba(30,25,40,.8); color:var(--fg); padding:10px 8px; border-radius:12px; font-size:14px; }
+  .btn[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+  .strip { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+  .strip::-webkit-scrollbar { display:none; }
+  .strip img { width:52px; height:52px; border-radius:12px; object-fit:cover; flex:none; border:2px solid transparent; opacity:.75; }
+  .strip img.on { border-color:var(--accent); opacity:1; }
+  .hint { position:fixed; top:calc(10px + env(safe-area-inset-top)); left:16px; right:16px; font-size:12px; color:var(--dim); pointer-events:none; text-shadow:0 1px 4px #000; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hint">Drag or move your finger over her. She follows, breathes, blinks and her hair moves.</div>
+<div class="bar">
+  <div class="row">
+    <button class="btn" id="auto" aria-pressed="false">Auto mood</button>
+    <button class="btn" id="talk" aria-pressed="false">Talking</button>
+    <button class="btn" id="blinkNow">Blink</button>
+  </div>
+  <div class="strip" id="strip"></div>
+</div>
+<script>
+const POSES = /*POSES*/[];
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { antialias:true, premultipliedAlpha:false });
+
+const VS = `attribute vec2 p; varying vec2 v; uniform vec2 uvS, uvO;
+void main(){ vec2 q = p*0.5+0.5; v = vec2(q.x*uvS.x + uvO.x, (1.0-q.y)*uvS.y + uvO.y); gl_Position = vec4(p,0,1); }`;
+
+const FS = `precision highp float;
+varying vec2 v;
+uniform sampler2D A, B;
+uniform float mixv, t, blink, tx, ty, talk;
+
+vec3 hsv(vec3 c){
+  vec4 K = vec4(0.,-1./3.,2./3.,-1.);
+  vec4 p = mix(vec4(c.bg,K.wz), vec4(c.gb,K.xy), step(c.b,c.g));
+  vec4 q = mix(vec4(p.xyw,c.r), vec4(c.r,p.yzx), step(p.x,c.r));
+  float d = q.x - min(q.w,q.y);
+  return vec3(abs(q.z + (q.w-q.y)/(6.*d+1e-10)), d/(q.x+1e-10), q.x);
+}
+float hairness(vec3 c){
+  vec3 h = hsv(c);
+  return smoothstep(.50,.62,h.y) * smoothstep(.40,.55,h.z) * step(.02,h.x) * step(h.x,.12);
+}
+float irisness(vec3 c){
+  vec3 h = hsv(c);
+  return smoothstep(.09,.14,h.y) * smoothstep(.30,.38,h.z) * step(.20,h.x) * step(h.x,.42);
+}
+vec4 live(sampler2D T, vec2 p){
+  // breathing about the bottom centre
+  float br = sin(t*1.5)*.5+.5;
+  p = (p - vec2(.5,1.)) / (1. + .010*br + .006*talk*sin(t*9.)) + vec2(.5,1.);
+  // head turn / tilt: the top moves more than the bottom
+  float up = 1. - p.y;
+  p.x += tx * .035 * up*up + talk*.0*up;
+  p.y += ty * .02 * up*up + talk*.004*sin(t*7.)*up;
+  // hair sway: soft mask, more movement toward the ends
+  float e = .005;
+  float m = hairness(texture2D(T,p).rgb)
+          + hairness(texture2D(T,p+vec2(e,0)).rgb) + hairness(texture2D(T,p-vec2(e,0)).rgb)
+          + hairness(texture2D(T,p+vec2(0,e)).rgb) + hairness(texture2D(T,p-vec2(0,e)).rgb);
+  m /= 5.;
+  float w = m * (.25 + .75*smoothstep(.08,.85,p.y));
+  vec2 d = vec2(sin(t*1.3 + p.y*7. + p.x*2.) + .5*sin(t*2.3 + p.y*13.),
+                .45*sin(t*1.1 + p.x*6.)) * .0048 * w;
+  d.x += tx * .010 * w;
+  p += d;
+  vec4 col = texture2D(T,p);
+  // blink: cover the iris with skin sampled just above it
+  float ir = (irisness(col.rgb)
+            + irisness(texture2D(T,p+vec2(.004,0)).rgb) + irisness(texture2D(T,p-vec2(.004,0)).rgb)
+            + irisness(texture2D(T,p+vec2(0,.004)).rgb) + irisness(texture2D(T,p-vec2(0,.004)).rgb)) / 5.;
+  vec4 lid = texture2D(T, p + vec2(0.,-.018));
+  col = mix(col, lid, clamp(ir*2.,0.,1.) * blink * smoothstep(.62,.5,p.y));
+  return col;
+}
+void main(){
+  vec4 c = mix(live(A,v), live(B,v), mixv);
+  float edge = smoothstep(1.0, 0.88, v.y) * smoothstep(0.0, 0.03, v.x) * smoothstep(1.0, 0.97, v.x);          // fade the bottom of the picture into the background
+  gl_FragColor = vec4(mix(vec3(.051,.043,.071), c.rgb, edge), 1.);
+}`;
+
+function sh(type, src){ const s = gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog); gl.useProgram(prog);
+const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+const U = n => gl.getUniformLocation(prog, n);
+const u = { uvS:U('uvS'), uvO:U('uvO'), A:U('A'), B:U('B'), mixv:U('mixv'), t:U('t'), blink:U('blink'), tx:U('tx'), ty:U('ty'), talk:U('talk') };
+
+const tex = [];
+function load(i){
+  return new Promise(res => {
+    if (tex[i]) return res(tex[i]);
+    const im = new Image();
+    im.onload = () => {
+      const T = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, T);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      tex[i] = T; res(T);
+    };
+    im.src = POSES[i];
+  });
+}
+
+let cur = 0, nxt = 0, mixv = 1, fading = false;
+async function setPose(i){
+  if (i === cur && !fading) return;
+  await load(i);
+  nxt = i; mixv = 0; fading = true;
+  [...strip.children].forEach((c,k) => c.classList.toggle('on', k === i));
+}
+
+const strip = document.getElementById('strip');
+POSES.forEach((src,i) => {
+  const im = new Image(); im.src = src; im.onclick = () => { autoOn = false; autoBtn.setAttribute('aria-pressed','false'); setPose(i); };
+  strip.appendChild(im);
+});
+
+// state
+let tx = 0, ty = 0, gx = 0, gy = 0, blinkT = -1, nextBlink = 2, talk = 0, talkOn = false, autoOn = false, autoAt = 6;
+const autoBtn = document.getElementById('auto'), talkBtn = document.getElementById('talk');
+autoBtn.onclick = () => { autoOn = !autoOn; autoBtn.setAttribute('aria-pressed', autoOn); autoAt = 0; };
+talkBtn.onclick = () => { talkOn = !talkOn; talkBtn.setAttribute('aria-pressed', talkOn); };
+document.getElementById('blinkNow').onclick = () => { blinkT = 0; };
+window.__force = o => Object.assign(window, o);
+
+function aim(e){
+  const x = (e.touches ? e.touches[0].clientX : e.clientX) / innerWidth;
+  const y = (e.touches ? e.touches[0].clientY : e.clientY) / innerHeight;
+  gx = (x - .5) * 2; gy = (y - .5) * 2;
+}
+addEventListener('pointermove', aim); addEventListener('pointerdown', aim);
+addEventListener('pointerleave', () => { gx = 0; gy = 0; });
+addEventListener('pointerup', () => { gx = 0; gy = 0; });
+
+function resize(){
+  const d = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = innerWidth * d; canvas.height = innerHeight * d;
+  gl.viewport(0,0,canvas.width,canvas.height);
+  const W = canvas.width, H = canvas.height;
+  // picture is square: ~84% of the height, top-aligned, centred horizontally
+  const size = H * .84;
+  const sx = W / size, sy = H / size;
+  gl.uniform2f(u.uvS, sx, sy); gl.uniform2f(u.uvO, (1 - sx) / 2, 0);
+}
+addEventListener('resize', resize); resize();
+
+let last = performance.now(), T0 = last;
+async function boot(){
+  await load(0); strip.children[0].classList.add('on');
+  POSES.forEach((_,i) => i && setTimeout(() => load(i), 300*i));
+  requestAnimationFrame(frame);
+}
+function frame(now){
+  const dt = Math.min((now-last)/1000, .1); last = now; const t = (now-T0)/1000;
+  tx += (gx - tx) * (1 - Math.exp(-dt*5)); ty += (gy - ty) * (1 - Math.exp(-dt*5));
+  // blink
+  nextBlink -= dt;
+  if (blinkT < 0 && nextBlink <= 0) { blinkT = 0; nextBlink = 2.2 + Math.random()*4; }
+  let bl = 0;
+  if (blinkT >= 0) { blinkT += dt; bl = Math.sin(Math.min(blinkT/.18,1)*Math.PI); if (blinkT > .18) blinkT = -1; }
+  if (window.__blink != null) bl = window.__blink;
+  talk += ((talkOn ? 1 : 0) - talk) * (1 - Math.exp(-dt*6));
+  // fade
+  if (fading) { mixv += dt/.55; if (mixv >= 1) { mixv = 1; cur = nxt; fading = false; } }
+  if (autoOn && !fading) { autoAt -= dt; if (autoAt <= 0) { autoAt = 5 + Math.random()*4; setPose((cur + 1 + Math.floor(Math.random()*(POSES.length-1))) % POSES.length); } }
+  const tA = tex[cur], tB = tex[fading ? nxt : cur];
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tA); gl.uniform1i(u.A, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tB); gl.uniform1i(u.B, 1);
+  gl.uniform1f(u.mixv, fading ? mixv : 0);
+  gl.uniform1f(u.t, window.__t != null ? window.__t : t); gl.uniform1f(u.blink, bl);
+  gl.uniform1f(u.tx, window.__tx != null ? window.__tx : tx); gl.uniform1f(u.ty, ty); gl.uniform1f(u.talk, talk);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(frame);
+}
+boot();
+setTimeout(() => { const h = document.querySelector('.hint'); h.style.transition = 'opacity 1s'; h.style.opacity = 0; }, 5000);
+</script>
+</body>
+</html>
