@@ -26,3 +26,13 @@ To use it on a phone it needs to be served over HTTPS (for example GitHub Pages,
 - `icons/` — Drift (`mascot.svg`) and the app icon
 - `wallpapers/` — the 8 wallpapers (SVG)
 - `design/` — mockup screenshots
+
+## Android app
+`releases/SongsApp.apk` is a ready-to-install Android build (Android 5.1+). It shows lock-screen / notification controls and keeps playing with the screen off.
+
+Rebuild it (needs JDK 17+ and the Android SDK):
+
+```sh
+npm install
+npm run android:apk      # output: android/app/build/outputs/apk/debug/app-debug.apk
+```
