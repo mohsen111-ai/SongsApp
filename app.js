@@ -120,6 +120,7 @@ async function readTags(file) {
       if (id === 'TIT2') out.title = frameText(body);
       else if (id === 'TPE1') out.artist = frameText(body);
       else if (id === 'TALB') out.album = frameText(body);
+      else if (id === 'TCON') out.genre = frameText(body);
       else if (id === 'APIC' && !out.cover) out.cover = framePicture(body);
     }
     return out;
@@ -138,6 +139,10 @@ let curUrl = null;
 const audio = new Audio();
 audio.preload = 'auto';
 const coverUrls = new Map();
+const moodOf = s => (s && s.mood) || 'chill';
+const viz = createViz($('#viz'), () => { const r = $('#fullCov').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, s: r.width / 2 }; });
+viz.onPulse = b => $('#fullCov').style.setProperty('--pulse', (b * 0.045).toFixed(3));
+let vizFor = null;
 
 const byId = id => songs.find(s => s.id === id);
 const cur = () => byId(queue[qi]);
@@ -303,6 +308,7 @@ function songMenu(id) {
     { icon: 'queue', label: 'Add to queue', fn: () => enqueue(id, false) },
     { icon: 'plus', label: 'Add to playlist…', fn: () => pickPlaylist(id) },
     { icon: 'heart', label: s.fav ? 'Remove from favourites' : 'Add to favourites', fn: () => toggleFav(id) },
+    { icon: 'looks', label: 'Set mood…', fn: () => moodMenu(id) },
     { icon: 'edit', label: 'Edit title & artist', fn: () => editSong(id) }
   ];
   if (view === 'lists' && openList !== null && !$('#q').value.trim()) {
@@ -406,7 +412,8 @@ $('#file').addEventListener('change', async e => {
       const m = base.match(/^(.+?)\s+-\s+(.+)$/);
       if (m && !artist) { artist = m[1].trim(); title = m[2].trim(); } else title = base;
     }
-    const song = { title, artist: artist || '', album: tags.album || '', cover: tags.cover || null, blob: f, fileName: f.name, size: f.size, mime: f.type, fav: false, added: Date.now() + i, last: 0, plays: 0 };
+    const gm = moodFromGenre(tags.genre);
+    const song = { title, artist: artist || '', album: tags.album || '', genre: tags.genre || '', mood: gm || '', moodSource: gm ? 'genre' : '', cover: tags.cover || null, blob: f, fileName: f.name, size: f.size, mime: f.type, fav: false, added: Date.now() + i, last: 0, plays: 0 };
     song.id = await DB.put('songs', song);
     songs.push(song);
     added++;
@@ -440,6 +447,9 @@ function loadCurrent(autoplay) {
   s.plays = (s.plays || 0) + 1;
   s.last = Date.now();
   DB.put('songs', s).catch(() => {});
+  viz.setMood(moodOf(s));
+  viz.resetStats();
+  vizFor = null;
   setMediaSession(s);
   updatePlayerUI();
   render();
@@ -471,6 +481,11 @@ function togglePlay() {
 }
 
 audio.addEventListener('ended', () => next(true));
+audio.addEventListener('playing', () => { if (vizFor !== curUrl) { vizFor = curUrl; viz.connect(audio); } updatePlayerUI(); });
+audio.addEventListener('timeupdate', () => {
+  const s = cur();
+  if (s && !s.mood && !s.moodSource) { const g = viz.guess(); if (g) setMood(s, g, 'audio'); }
+});
 audio.addEventListener('play', () => { updatePlayerUI(); render(); });
 audio.addEventListener('pause', () => { updatePlayerUI(); render(); });
 audio.addEventListener('timeupdate', updateProgress);
@@ -512,6 +527,7 @@ function updatePlayerUI() {
   $('#fullClose').innerHTML = ico('down');
   $('#fullMore').innerHTML = ico('more');
   $('#full').classList.toggle('playing', playing);
+  if (playing && $('#full').classList.contains('open')) viz.start(); else viz.stop();
   if (!s) return;
   const w = wpUrl(wpFor(s.title + s.artist));
   $('#miniCov').innerHTML = thumb(s);
@@ -522,6 +538,8 @@ function updatePlayerUI() {
   $('#full').style.setProperty('--fwp', coverUrl(s) ? `url(${coverUrl(s)})` : `url(${w})`);
   $('#fullTitle').textContent = s.title;
   $('#fullArtist').textContent = s.artist || 'Unknown artist';
+  const mk = moodOf(s);
+  $('#moodBtn').innerHTML = `<i style="background:${MOODS[mk].c[0]};color:${MOODS[mk].c[0]}"></i>${MOODS[mk].name}${s.moodSource === 'audio' ? ' · guess' : ''}`;
   $('#fullFav').innerHTML = ico('heart', s.fav ? 'fill' : '');
   $('#fullFav').classList.toggle('on', !!s.fav);
   const up = queue.slice(qi + 1, qi + 31).map(byId).filter(Boolean);
@@ -572,17 +590,24 @@ seekEl.addEventListener('change', () => {
   seeking = false;
 });
 
-function openFull() { const f = $('#full'); f.classList.add('open'); f.setAttribute('aria-hidden', 'false'); }
-function closeFull() { const f = $('#full'); f.classList.remove('open'); f.setAttribute('aria-hidden', 'true'); }
+function openFull() { const f = $('#full'); f.classList.add('open'); f.setAttribute('aria-hidden', 'false'); viz.resize(); updatePlayerUI(); }
+function closeFull() { const f = $('#full'); f.classList.remove('open'); f.setAttribute('aria-hidden', 'true'); viz.stop(); }
 
-/* lock-screen / headphone controls */
-function setMediaSession(s) {
+/* lock-screen / headphone controls (the phone draws that widget itself, so it can only show a still picture) */
+let artUrl = null;
+async function setMediaSession(s) {
   if (!('mediaSession' in navigator)) return;
+  const meta = art => new MediaMetadata({ title: s.title, artist: s.artist || 'Unknown artist', album: s.album || 'SongsApp', artwork: art });
   const u = coverUrl(s);
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: s.title, artist: s.artist || 'Unknown artist', album: s.album || 'SongsApp',
-    artwork: u ? [{ src: u, sizes: '512x512', type: s.cover.type || 'image/jpeg' }] : [{ src: new URL('icons/icon-512.png', location.href).href, sizes: '512x512', type: 'image/png' }]
-  });
+  navigator.mediaSession.metadata = meta(u ? [{ src: u, sizes: '512x512', type: s.cover.type || 'image/jpeg' }] : []);
+  if (!u) {
+    const url = await moodArt((s.title || '?').charAt(0), moodOf(s));
+    if (url && cur() && cur().id === s.id) {
+      navigator.mediaSession.metadata = meta([{ src: url, sizes: '512x512', type: 'image/png' }]);
+      if (artUrl) URL.revokeObjectURL(artUrl);
+      artUrl = url;
+    } else if (url) URL.revokeObjectURL(url);
+  }
   const set = (a, fn) => { try { navigator.mediaSession.setActionHandler(a, fn); } catch { /* unsupported */ } };
   set('play', () => audio.play());
   set('pause', () => audio.pause());
@@ -590,6 +615,22 @@ function setMediaSession(s) {
   set('nexttrack', () => next(false));
   set('seekto', d => { if (d.seekTime != null) audio.currentTime = d.seekTime; });
 }
+
+/* ================= moods ================= */
+async function setMood(s, key, source) {
+  s.mood = key; s.moodSource = source;
+  await DB.put('songs', s).catch(() => {});
+  if (cur() && cur().id === s.id) { viz.setMood(moodOf(s)); setMediaSession(s); }
+  updatePlayerUI();
+}
+function moodMenu(id) {
+  const s = byId(id);
+  if (!s) return;
+  const items = MOOD_KEYS.map(k => ({ label: MOODS[k].name + (s.mood === k ? '  ✓' : ''), fn: () => setMood(s, k, 'user') }));
+  items.push({ label: 'Let SongsApp guess', fn: () => { s.mood = ''; s.moodSource = ''; viz.resetStats(); setMood(s, '', ''); toast('I’ll guess after 20 seconds of listening'); } });
+  openSheet('Mood for “' + s.title + '”', items);
+}
+$('#moodBtn').addEventListener('click', () => cur() && moodMenu(cur().id));
 
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea')) return;

@@ -50,6 +50,7 @@
 </div>
 
 <section id="full" class="full" aria-hidden="true">
+  <canvas id="viz" class="viz"></canvas>
   <div class="full-top">
     <button id="fullClose" class="ic" type="button" aria-label="Close"></button>
     <span>Now playing</span>
@@ -61,7 +62,7 @@
       <img class="peek" src="icons/mascot.svg" alt="" width="84" height="84">
     </div>
     <div class="full-meta">
-      <div><h2 id="fullTitle"></h2><p id="fullArtist"></p></div>
+      <div><h2 id="fullTitle"></h2><p id="fullArtist"></p><button id="moodBtn" class="mood" type="button" aria-label="Change mood"></button></div>
       <button id="fullFav" class="ic heart" type="button" aria-label="Favourite"></button>
     </div>
     <div class="seek">
@@ -82,6 +83,7 @@
 <dialog id="sheet"><div class="sheet-in"><h3 id="sheetTitle"></h3><div id="sheetBody"></div></div></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+<script src="moods.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

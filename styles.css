@@ -152,12 +152,16 @@ main > * { animation: rise .35s var(--ease) both; }
 .full::before { content: ""; position: absolute; inset: -40px; background: var(--fwp, none) center / cover; filter: blur(26px) saturate(1.3); opacity: .75; }
 .full::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 25%, transparent), var(--bg) 82%); }
 .full > * { position: relative; z-index: 1; }
+.full > canvas.viz { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mood { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 12px; border-radius: 99px; background: var(--card-a); border: 1px solid var(--line); font-weight: 600; font-size: 13px; }
+.mood i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+.mood:active { transform: scale(.95); }
 .full-top { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 0; font-weight: 600; color: var(--mute); }
 .full-scroll { flex: 1; overflow-y: auto; padding: 8px 24px calc(28px + env(safe-area-inset-bottom)); }
 .stage { position: relative; display: grid; place-items: center; padding: 14px 0 20px; }
 .cover-big { width: min(74vw, 340px); aspect-ratio: 1; border-radius: 26px; overflow: hidden; display: grid; place-items: center; font-family: var(--head); font-size: 96px; font-weight: 800; color: #fff; background: var(--card) center / cover; text-shadow: 0 4px 18px rgba(0, 0, 0, .5); box-shadow: 0 30px 60px rgba(0, 0, 0, .5); transform: scale(.9); transition: transform .6s var(--ease); }
 .cover-big img { width: 100%; height: 100%; object-fit: cover; }
-.full.playing .cover-big { transform: scale(1); }
+.full.playing .cover-big { transform: scale(calc(1 + var(--pulse, 0))); transition: transform .09s linear; }
 .peek { position: absolute; right: max(0px, calc(50% - 190px)); bottom: -2px; }
 .full.playing .peek { animation: bob 1.6s ease-in-out infinite; }
 .full-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
