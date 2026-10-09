@@ -39,7 +39,7 @@ const WALLPAPERS = [
   { id: 'ember-dunes', name: 'Ember Dunes' },
   { id: 'glass-forest', name: 'Glass Forest' },
   { id: 'low-orbit', name: 'Low Orbit' },
-  { id: 'violet-rain', name: 'Violet Rain' },
+  { id: 'cold-rain', name: 'Cold Rain' },
   { id: 'paper-lanterns', name: 'Paper Lanterns', live: true },
   { id: 'aurora-veil', name: 'Aurora Veil', live: true },
   { id: 'starfield-drift', name: 'Starfield Drift', live: true }

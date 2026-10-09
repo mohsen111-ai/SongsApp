@@ -2,7 +2,7 @@
 
 A private music player for one person. Your songs stay on your phone — they're stored in the browser's own storage (IndexedDB), never uploaded anywhere. No accounts, no ads, works offline.
 
-Mascot: **Drift** the jellyfish. Look: midnight navy `#090b14`, lavender `#b4a3ff` (light theme `#f3f1ee` / `#6b55c9`), Syne headings, Hanken Grotesk text. Auto light/dark, or pick one in the Looks tab.
+Mascot: **Drift** the jellyfish. Look: midnight teal `#05121a`, aqua `#4fe3d0` (light theme `#eef4f3` / `#0c8f83`), Syne headings, Hanken Grotesk text. Auto light/dark, or pick one in the Looks tab.
 
 ## Features
 - Add songs from your phone (MP3, M4A, WAV, FLAC, OGG…); title, artist, album and cover art are read from the file's tags

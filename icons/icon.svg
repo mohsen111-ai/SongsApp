@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <defs><radialGradient id="ibg" cx=".5" cy=".38" r=".85"><stop offset="0" stop-color="#2c2381"/><stop offset="1" stop-color="#090b14"/></radialGradient></defs>
+  <defs><radialGradient id="ibg" cx=".5" cy=".38" r=".85"><stop offset="0" stop-color="#106470"/><stop offset="1" stop-color="#05121a"/></radialGradient></defs>
   <rect width="512" height="512" fill="url(#ibg)"/><circle cx="353" cy="396" r="1.2" fill="#fff" opacity="0.51"/><circle cx="44" cy="303" r="2.1" fill="#fff" opacity="0.43"/><circle cx="464" cy="117" r="2.2" fill="#fff" opacity="0.57"/><circle cx="338" cy="7" r="1.6" fill="#fff" opacity="0.35"/><circle cx="459" cy="148" r="2.2" fill="#fff" opacity="0.56"/><circle cx="130" cy="10" r="2.2" fill="#fff" opacity="0.30"/><circle cx="140" cy="63" r="1.6" fill="#fff" opacity="0.70"/><circle cx="126" cy="41" r="2.3" fill="#fff" opacity="0.36"/><circle cx="209" cy="505" r="1.3" fill="#fff" opacity="0.39"/><circle cx="111" cy="445" r="2.1" fill="#fff" opacity="0.64"/><circle cx="262" cy="412" r="2.0" fill="#fff" opacity="0.27"/><circle cx="326" cy="296" r="1.4" fill="#fff" opacity="0.59"/><circle cx="312" cy="4" r="2.5" fill="#fff" opacity="0.37"/><circle cx="179" cy="448" r="1.2" fill="#fff" opacity="0.29"/><circle cx="427" cy="143" r="2.6" fill="#fff" opacity="0.21"/><circle cx="180" cy="388" r="1.4" fill="#fff" opacity="0.53"/><circle cx="39" cy="41" r="2.1" fill="#fff" opacity="0.46"/><circle cx="130" cy="476" r="0.9" fill="#fff" opacity="0.57"/><circle cx="488" cy="146" r="1.8" fill="#fff" opacity="0.63"/><circle cx="434" cy="296" r="2.5" fill="#fff" opacity="0.55"/><circle cx="277" cy="56" r="1.3" fill="#fff" opacity="0.46"/><circle cx="79" cy="129" r="2.2" fill="#fff" opacity="0.27"/><circle cx="41" cy="167" r="2.3" fill="#fff" opacity="0.52"/><circle cx="211" cy="50" r="1.3" fill="#fff" opacity="0.68"/><circle cx="167" cy="360" r="2.1" fill="#fff" opacity="0.25"/><circle cx="401" cy="477" r="1.9" fill="#fff" opacity="0.26"/>
   <svg x="76" y="70" width="360" height="360" viewBox="0 0 200 200">
   <style>
@@ -12,22 +12,22 @@
     @keyframes float{0%{transform:translateY(0);opacity:0}15%{opacity:.8}100%{transform:translateY(-46px);opacity:0}}
   </style>
   <defs>
-    <radialGradient id="gl"><stop offset="0" stop-color="#b4a3ff" stop-opacity=".55"/><stop offset="1" stop-color="#b4a3ff" stop-opacity="0"/></radialGradient>
-    <linearGradient id="dg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9d0ff"/><stop offset="1" stop-color="#8f7ae0"/></linearGradient>
-    <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b4a3ff"/><stop offset="1" stop-color="#6e5bd6" stop-opacity=".25"/></linearGradient>
+    <radialGradient id="gl"><stop offset="0" stop-color="#4fe3d0" stop-opacity=".55"/><stop offset="1" stop-color="#4fe3d0" stop-opacity="0"/></radialGradient>
+    <linearGradient id="dg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d2fff7"/><stop offset="1" stop-color="#4fe3d0"/></linearGradient>
+    <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4fe3d0"/><stop offset="1" stop-color="#17877f" stop-opacity=".25"/></linearGradient>
   </defs>
   <circle cx="100" cy="100" r="96" fill="url(#gl)"/>
-  <circle class="b" cx="46" cy="164" r="4" fill="#d9d0ff" opacity=".7"/><circle class="b b2" cx="156" cy="170" r="3" fill="#d9d0ff" opacity=".7"/><circle class="b b3" cx="104" cy="182" r="2.6" fill="#d9d0ff" opacity=".7"/>
+  <circle class="b" cx="46" cy="164" r="4" fill="#d2fff7" opacity=".7"/><circle class="b b2" cx="156" cy="170" r="3" fill="#d2fff7" opacity=".7"/><circle class="b b3" cx="104" cy="182" r="2.6" fill="#d2fff7" opacity=".7"/>
   <path class="t t0" d="M62 118 q-15 14 0 28 t10 28 t-10 22" fill="none" stroke="url(#tg)" stroke-width="8" stroke-linecap="round"/><path class="t t1" d="M80 118 q12 14 0 28 t-8 28 t8 22" fill="none" stroke="url(#tg)" stroke-width="8" stroke-linecap="round"/><path class="t t2" d="M100 118 q-9 14 0 28 t6 28 t-6 22" fill="none" stroke="url(#tg)" stroke-width="9" stroke-linecap="round"/><path class="t t3" d="M120 118 q15 14 0 28 t-10 28 t10 22" fill="none" stroke="url(#tg)" stroke-width="8" stroke-linecap="round"/><path class="t t4" d="M138 118 q-12 14 0 28 t8 28 t-8 22" fill="none" stroke="url(#tg)" stroke-width="8" stroke-linecap="round"/>
   <g class="dome">
     <path d="M38 118 C36 56 68 28 100 28 C132 28 164 56 162 118 Q132 134 100 124 Q68 134 38 118Z" fill="url(#dg)"/>
     <ellipse cx="74" cy="56" rx="20" ry="11" fill="#fff" opacity=".4" transform="rotate(-25 74 56)"/>
-    <circle cx="80" cy="94" r="6.4" fill="#1a1230"/><circle cx="120" cy="94" r="6.4" fill="#1a1230"/>
+    <circle cx="80" cy="94" r="6.4" fill="#04231f"/><circle cx="120" cy="94" r="6.4" fill="#04231f"/>
     <circle cx="82.2" cy="91.6" r="2.2" fill="#fff"/><circle cx="122.2" cy="91.6" r="2.2" fill="#fff"/>
     <circle cx="64" cy="108" r="7" fill="#ff8fb1" opacity=".65"/><circle cx="136" cy="108" r="7" fill="#ff8fb1" opacity=".65"/>
-    <path d="M91 104 Q100 114 109 104" fill="none" stroke="#1a1230" stroke-width="3.2" stroke-linecap="round"/>
-    <path d="M40 104 C38 14 162 14 160 104" fill="none" stroke="#f4f1ff" stroke-width="8" stroke-linecap="round"/>
-    <rect x="27" y="90" width="20" height="36" rx="10" fill="#f4f1ff"/><rect x="32" y="97" width="10" height="22" rx="5" fill="#6e5bd6"/>
-    <rect x="153" y="90" width="20" height="36" rx="10" fill="#f4f1ff"/><rect x="158" y="97" width="10" height="22" rx="5" fill="#6e5bd6"/>
+    <path d="M91 104 Q100 114 109 104" fill="none" stroke="#04231f" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M40 104 C38 14 162 14 160 104" fill="none" stroke="#effffd" stroke-width="8" stroke-linecap="round"/>
+    <rect x="27" y="90" width="20" height="36" rx="10" fill="#effffd"/><rect x="32" y="97" width="10" height="22" rx="5" fill="#17877f"/>
+    <rect x="153" y="90" width="20" height="36" rx="10" fill="#effffd"/><rect x="158" y="97" width="10" height="22" rx="5" fill="#17877f"/>
   </g></svg>
 </svg>
