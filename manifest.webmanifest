@@ -1,6 +1,6 @@
 {
-  "name": "SongsApp",
-  "short_name": "SongsApp",
+  "name": "Drift",
+  "short_name": "Drift",
   "description": "A private music player. Your songs stay on your phone.",
   "start_url": "./index.html",
   "scope": "./",

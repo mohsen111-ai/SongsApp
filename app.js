@@ -261,7 +261,7 @@ function render() {
     else if (view === 'recent') list = list.filter(s => s.last).sort((a, b) => b.last - a.last).slice(0, 60);
     else list.sort(byTitle);
     shown = list.map(s => s.id);
-    if (!songs.length) html = emptyHtml('Hi, I’m Drift!', 'Add songs from your phone and I’ll keep them here — private, offline, no ads.', true);
+    if (!songs.length) html = emptyHtml('Welcome to Drift', 'Add songs from your phone and I’ll keep them here — private, offline, no ads.', true);
     else html = head(TITLES[view], `${list.length} songs`) + playBar(list.length)
       + (list.length ? list.map(rowHtml).join('') : emptyHtml(view === 'favs' ? 'No favourites yet' : 'Nothing played yet', view === 'favs' ? 'Tap the heart on any song.' : 'Play a song and it shows up here.', false));
   }
@@ -651,7 +651,7 @@ const blobToDataUrl = b => new Promise(res => { const r = new FileReader(); r.on
 
 let artUrl = null;
 async function setMediaSession(s) {
-  const base = { title: s.title, artist: s.artist || 'Unknown artist', album: s.album || 'SongsApp' };
+  const base = { title: s.title, artist: s.artist || 'Unknown artist', album: s.album || 'Drift' };
   const u = coverUrl(s);
   if (u) {
     const src = isNative ? await blobToDataUrl(s.cover) : u;
@@ -683,7 +683,7 @@ function moodMenu(id) {
   const s = byId(id);
   if (!s) return;
   const items = MOOD_KEYS.map(k => ({ label: MOODS[k].name + (s.mood === k ? '  ✓' : ''), fn: () => setMood(s, k, 'user') }));
-  items.push({ label: 'Let SongsApp guess', fn: () => { s.mood = ''; s.moodSource = ''; viz.resetStats(); setMood(s, '', ''); toast('I’ll guess after 20 seconds of listening'); } });
+  items.push({ label: 'Let Drift guess', fn: () => { s.mood = ''; s.moodSource = ''; viz.resetStats(); setMood(s, '', ''); toast('I’ll guess after 20 seconds of listening'); } });
   openSheet('Mood for “' + s.title + '”', items);
 }
 $('#moodBtn').addEventListener('click', () => cur() && moodMenu(cur().id));

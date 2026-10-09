@@ -1,4 +1,4 @@
-// Caches the app shell so SongsApp opens offline. Songs live in IndexedDB, not here.
+// Caches the app shell so Drift opens offline. Songs live in IndexedDB, not here.
 const CACHE = 'songsapp-shell-v4';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'moods.js', 'manifest.webmanifest', 'icons/mascot.svg', 'wallpapers/night-tide.svg', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 

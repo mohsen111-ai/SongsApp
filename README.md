@@ -1,8 +1,8 @@
-# SongsApp
+# Drift
 
 A private music player for one person. Your songs stay on your phone — they're stored in the browser's own storage (IndexedDB), never uploaded anywhere. No accounts, no ads, works offline.
 
-Mascot: **Drift** the jellyfish. Look: midnight teal `#05121a`, aqua `#4fe3d0` (light theme `#eef4f3` / `#0c8f83`), Syne headings, Hanken Grotesk text. Auto light/dark, or pick one in the Looks tab.
+The app is named after its mascot, **Drift** the jellyfish. Look: midnight teal `#05121a`, aqua `#4fe3d0` (light theme `#eef4f3` / `#0c8f83`), Syne headings, Hanken Grotesk text. Auto light/dark, or pick one in the Looks tab.
 
 ## Features
 - Add songs from your phone (MP3, M4A, WAV, FLAC, OGG…); title, artist, album and cover art are read from the file's tags
@@ -28,7 +28,7 @@ To use it on a phone it needs to be served over HTTPS (for example GitHub Pages,
 - `design/` — mockup screenshots
 
 ## Android app
-`releases/SongsApp.apk` is a ready-to-install Android build (Android 5.1+). It shows lock-screen / notification controls and keeps playing with the screen off.
+`releases/Drift.apk` is a ready-to-install Android build (Android 5.1+). It shows lock-screen / notification controls and keeps playing with the screen off.
 
 Rebuild it (needs JDK 17+ and the Android SDK):
 

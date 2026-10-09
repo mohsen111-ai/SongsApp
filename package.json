@@ -2,7 +2,7 @@
   "name": "songsapp",
   "version": "1.0.0",
   "private": true,
-  "description": "SongsApp: a private mp3 player for Android",
+  "description": "Drift: a private mp3 player for Android",
   "scripts": {
     "build:www": "node scripts/build-www.js",
     "android:sync": "npm run build:www && cap sync android",
